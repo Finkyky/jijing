@@ -1,0 +1,104 @@
+name: Update Stock Data
+
+on:
+  schedule:
+    # 每天 UTC 时间 0:00 运行 (北京时间 8:00)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 支持手动触发
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史，用于保留历史数据
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas openpyxl akshare beautifulsoup4
+
+      - name: Run stock filter script
+        run: |
+          python stock_filter.py
+        continue-on-error: false
+
+      - name: Check if data files exist
+        id: check_file
+        run: |
+          if [ -f "stock_data.json" ]; then
+            echo "file_exists=true" >> $GITHUB_OUTPUT
+            echo "Data file generated successfully"
+          else
+            echo "file_exists=false" >> $GITHUB_OUTPUT
+            echo "Warning: stock_data.json not found"
+          fi
+
+          # 列出生成的文件
+          echo "Generated files:"
+          ls -la stock_data*.json 2>/dev/null || echo "No JSON files found"
+          ls -la stock_filter*.xlsx 2>/dev/null || echo "No Excel files found"
+
+      - name: Move data to stock-web/data directory
+        if: steps.check_file.outputs.file_exists == 'true'
+        run: |
+          mkdir -p stock-web/data
+
+          # 复制所有历史数据文件
+          for f in stock_data_*.json; do
+            if [ -f "$f" ]; then
+              cp "$f" stock-web/data/
+              echo "Copied $f to stock-web/data/"
+            fi
+          done
+
+          # 复制最新数据文件
+          cp stock_data.json stock-web/data/
+          echo "Copied stock_data.json to stock-web/data/"
+
+          # 列出data目录内容
+          echo "Data directory contents:"
+          ls -la stock-web/data/
+
+      - name: Clean old history files (keep last 30 days)
+        if: steps.check_file.outputs.file_exists == 'true'
+        run: |
+          # 删除超过30天的历史数据文件
+          find . -name "stock_data_*.json" -type f -mtime +30 -delete 2>/dev/null || true
+          find stock-web/data -name "stock_data_*.json" -type f -mtime +30 -delete 2>/dev/null || true
+          echo "Cleaned up old history files"
+
+      - name: Commit and push if changed
+        if: steps.check_file.outputs.file_exists == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # 添加所有数据文件
+          git add stock_data.json stock_data_*.json stock-web/data/*.json stock_filter_*.xlsx 2>/dev/null || true
+
+          # 检查是否有变更
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update stock data - $(date '+%Y-%m-%d %H:%M:%S')"
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: stock-filter-web
+    runtime: node
+    buildCommand: cd stock-web && npm install && npm run build
+    startCommand: cd stock-web && npm run start:prod
+    env: node
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      # AI分析服务配置 - 在Render Dashboard中手动设置以下环境变量:
+      # BUILTIN_MODEL_BASE_URL - AI模型API地址
+      # BUILTIN_MODEL_API_KEY - AI模型API密钥
+      # BUILTIN_MODEL_ID - 模型ID
