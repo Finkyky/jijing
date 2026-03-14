@@ -3,7 +3,7 @@ services:
     name: stock-filter-web
     runtime: node
     buildCommand: cd stock-web && npm install && npm run build
-    startCommand: cd stock-web && npm run start:prod
+    startCommand: cd stock-web && node dist/main.js
     env: node
     plan: free
     healthCheckPath: /
