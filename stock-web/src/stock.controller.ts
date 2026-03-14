@@ -1393,7 +1393,7 @@ export class StockController {
         .stat-card {
             background: var(--bg-card);
             border-radius: var(--radius-lg);
-            padding: 24px;
+            padding: 16px 20px;
             border: 1px solid var(--border);
             transition: all 0.3s ease;
             position: relative;
@@ -1420,7 +1420,7 @@ export class StockController {
         }
 
         .stat-card .value {
-            font-size: 36px;
+            font-size: 24px;
             font-weight: 700;
             background: linear-gradient(135deg, var(--text-primary), var(--primary-light));
             -webkit-background-clip: text;
@@ -1430,8 +1430,8 @@ export class StockController {
 
         .stat-card .label {
             color: var(--text-secondary);
-            font-size: 14px;
-            margin-top: 4px;
+            font-size: 12px;
+            margin-top: 2px;
             font-weight: 500;
         }
 
@@ -1879,7 +1879,7 @@ export class StockController {
             .actions { width: 100%; justify-content: center; margin-left: 0; margin-top: 16px; }
             .btn { flex: 1; justify-content: center; }
             th, td { padding: 12px 8px; font-size: 13px; }
-            .stat-card .value { font-size: 28px; }
+            .stat-card .value { font-size: 20px; }
             .action-btns { flex-direction: column; }
         }
     `;
