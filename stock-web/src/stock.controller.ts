@@ -670,17 +670,22 @@ export class StockController {
             }
             const html = sorted.map(stock => {
                 const companies = stock.持仓基金公司.split('、');
-                const companyTags = companies.map(c => {
+                const companyTags = companies.map((c, idx) => {
                     const colorClass = getCompanyColorClass(c);
-                    return '<span class="company-tag ' + colorClass + '">' + c + '</span>';
+                    // 前6个标签默认显示，其余隐藏
+                    const style = idx >= 6 ? 'display:none;' : '';
+                    return '<span class="company-tag ' + colorClass + '" style="' + style + '">' + c + '</span>';
                 }).join('');
+                const showMoreBtn = companies.length > 6
+                    ? '<button class="show-more-btn" data-count="' + (companies.length - 6) + '" onclick="toggleCompanyTags(this)">+' + (companies.length - 6) + '</button>'
+                    : '';
                 return '<tr>' +
                     '<td class="stock-code">' + stock.股票代码 + '</td>' +
                     '<td class="stock-name">' + stock.股票名称 + '</td>' +
                     '<td class="market-cap">' + stock.总市值亿.toFixed(0).toLocaleString() + '</td>' +
                     '<td>' + (stock.所属行业 || '-') + '</td>' +
                     '<td><span class="fund-count">' + stock.持仓基金数量 + '</span></td>' +
-                    '<td>' + companyTags + '</td>' +
+                    '<td class="company-tags-cell"><div class="company-tags-wrapper">' + companyTags + showMoreBtn + '</div></td>' +
                     '<td class="action-btns">' +
                         '<button class="detail-btn" onclick="showDetail(\\'' + stock.股票代码 + '\\', \\'' + stock.股票名称 + '\\')">明细</button>' +
                         '<button class="analyze-btn" onclick="startAnalyze(\\'' + stock.股票代码 + '\\', \\'' + stock.股票名称 + '\\')">🤖 AI分析</button>' +
@@ -688,6 +693,30 @@ export class StockController {
                     '</tr>';
             }).join('');
             document.getElementById('stockTable').innerHTML = html;
+        }
+
+        // 展开/收起基金公司标签
+        function toggleCompanyTags(btn) {
+            const wrapper = btn.parentElement;
+            const tags = wrapper.querySelectorAll('.company-tag');
+            const isExpanded = btn.classList.contains('expanded');
+            const hiddenCount = parseInt(btn.getAttribute('data-count')) || 0;
+
+            if (isExpanded) {
+                // 收起：隐藏第6个之后的标签
+                for (let i = 6; i < tags.length; i++) {
+                    tags[i].style.display = 'none';
+                }
+                btn.textContent = '+' + hiddenCount;
+                btn.classList.remove('expanded');
+                wrapper.classList.remove('expanded');
+            } else {
+                // 展开：显示所有标签
+                tags.forEach(tag => tag.style.display = 'inline-flex');
+                btn.textContent = '收起';
+                btn.classList.add('expanded');
+                wrapper.classList.add('expanded');
+            }
         }
 
         // 基金公司颜色映射
@@ -1964,12 +1993,18 @@ export class StockController {
         }
 
         .company-tag {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 11px;
             font-weight: 500;
-            margin: 2px;
+            margin: 0;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .company-tag:hover {
+            transform: scale(1.05);
         }
 
         /* 基金公司标签颜色 */
@@ -1992,6 +2027,60 @@ export class StockController {
         .company-tag.slate { background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3); }
         .company-tag.jinglin { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
         .company-tag.default { background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
+
+        .company-tags-cell {
+            max-width: 350px;
+        }
+        .company-tags-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px 6px;
+            max-height: 52px;
+            overflow: hidden;
+            position: relative;
+            transition: max-height 0.3s ease-out;
+        }
+        .company-tags-wrapper:not(.expanded)::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 60px;
+            height: 26px;
+            background: linear-gradient(to right, transparent, var(--card-bg));
+            pointer-events: none;
+        }
+        .company-tags-wrapper.expanded {
+            max-height: 500px;
+            transition: max-height 0.4s ease-out;
+        }
+        .company-tag-hidden {
+            display: none !important;
+        }
+        .show-more-btn {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0.25) 100%);
+            color: var(--primary);
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            cursor: pointer;
+            margin-left: 2px;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+        .show-more-btn:hover {
+            background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%);
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        }
+        .show-more-btn.expanded {
+            background: rgba(99, 102, 241, 0.2);
+            border-radius: 12px;
+        }
 
         .action-btns {
             display: flex;
