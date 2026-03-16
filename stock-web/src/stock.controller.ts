@@ -728,10 +728,10 @@ export class StockController {
                     '<td>' + (stock.所属行业 || '-') + '</td>' +
                     '<td><span class="fund-count">' + stock.持仓基金数量 + '</span></td>' +
                     '<td class="company-tags-cell"><div class="company-tags-wrapper">' + companyTags + showMoreBtn + '</div></td>' +
-                    '<td class="action-btns">' +
+                    '<td class="action-cell"><div class="action-btns">' +
                         '<button class="detail-btn" onclick="showDetail(\\'' + stock.股票代码 + '\\', \\'' + stock.股票名称 + '\\')">明细</button>' +
                         '<button class="analyze-btn" onclick="startAnalyze(\\'' + stock.股票代码 + '\\', \\'' + stock.股票名称 + '\\')">🤖 AI分析</button>' +
-                    '</td>' +
+                    '</div></td>' +
                     '</tr>';
             }).join('');
             document.getElementById('stockTable').innerHTML = html;
@@ -2012,6 +2012,7 @@ export class StockController {
             padding: 16px 20px;
             text-align: left;
             border-bottom: 1px solid var(--border);
+            vertical-align: middle;
         }
 
         th {
@@ -2029,7 +2030,9 @@ export class StockController {
         }
 
         th:hover { color: var(--primary-light); }
-        tr { transition: background 0.2s; }
+        tr {
+            transition: background 0.2s;
+        }
         tr:hover { background: var(--bg-card-hover); }
 
         .stock-code {
@@ -2103,15 +2106,18 @@ export class StockController {
 
         .company-tags-cell {
             max-width: 350px;
+            vertical-align: middle;
         }
         .company-tags-wrapper {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
             gap: 4px 6px;
+            min-height: 24px;
             max-height: 52px;
             overflow: hidden;
             position: relative;
+            line-height: 1.5;
         }
         .company-tags-wrapper:not(.expanded)::after {
             content: '';
@@ -2157,8 +2163,14 @@ export class StockController {
         }
 
         .action-btns {
-            display: flex;
+            display: inline-flex;
             gap: 8px;
+            align-items: center;
+            white-space: nowrap;
+        }
+
+        .action-cell {
+            vertical-align: middle;
         }
 
         .detail-btn {
@@ -2171,6 +2183,7 @@ export class StockController {
             font-size: 12px;
             font-weight: 500;
             transition: all 0.2s;
+            white-space: nowrap;
         }
 
         .detail-btn:hover {
@@ -2188,6 +2201,7 @@ export class StockController {
             font-size: 12px;
             font-weight: 500;
             transition: all 0.2s;
+            white-space: nowrap;
         }
 
         .analyze-btn:hover {
