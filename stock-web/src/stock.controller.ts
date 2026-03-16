@@ -671,12 +671,8 @@ export class StockController {
             const html = sorted.map(stock => {
                 const companies = stock.持仓基金公司.split('、');
                 const companyTags = companies.map(c => {
-                    let cls = 'company-tag';
-                    if (c.includes('华夏')) cls += ' huaxia';
-                    else if (c.includes('易方达')) cls += ' yifangda';
-                    else if (c.includes('中欧')) cls += ' zhongou';
-                    else if (c.includes('景林')) cls += ' jinglin';
-                    return '<span class="' + cls + '">' + c + '</span>';
+                    const colorClass = getCompanyColorClass(c);
+                    return '<span class="company-tag ' + colorClass + '">' + c + '</span>';
                 }).join('');
                 return '<tr>' +
                     '<td class="stock-code">' + stock.股票代码 + '</td>' +
@@ -692,6 +688,94 @@ export class StockController {
                     '</tr>';
             }).join('');
             document.getElementById('stockTable').innerHTML = html;
+        }
+
+        // 基金公司颜色映射
+        function getCompanyColorClass(company) {
+            const colorMap = {
+                // 头部公募 - 蓝色系
+                '华夏基金': 'blue',
+                '易方达基金': 'orange',
+                '南方基金': 'red',
+                '嘉实基金': 'purple',
+                '广发基金': 'green',
+                '博时基金': 'teal',
+                '富国基金': 'indigo',
+                '招商基金': 'cyan',
+                '汇添富基金': 'pink',
+                '鹏华基金': 'amber',
+                // 银行系公募 - 绿色系
+                '工银瑞信基金': 'emerald',
+                '建信基金': 'lime',
+                '中银基金': 'sky',
+                '交银施罗德基金': 'violet',
+                '农银汇理基金': 'fuchsia',
+                '民生加银基金': 'rose',
+                '永赢基金': 'slate',
+                // 其他大型公募
+                '银华基金': 'blue',
+                '国泰基金': 'orange',
+                '华安基金': 'red',
+                '兴证全球基金': 'purple',
+                '景顺长城基金': 'green',
+                '上投摩根基金': 'teal',
+                '摩根基金': 'teal',
+                '华宝基金': 'indigo',
+                '华泰柏瑞基金': 'cyan',
+                '中欧基金': 'pink',
+                '东方基金': 'amber',
+                '平安基金': 'emerald',
+                '长城基金': 'lime',
+                '融通基金': 'sky',
+                '诺安基金': 'violet',
+                '海富通基金': 'fuchsia',
+                '万家基金': 'rose',
+                '天弘基金': 'slate',
+                '大成基金': 'blue',
+                '中信保诚基金': 'orange',
+                '光大保德信基金': 'red',
+                '泓德基金': 'purple',
+                '中庚基金': 'green',
+                '东吴基金': 'teal',
+                '国投瑞银基金': 'indigo',
+                '华商基金': 'cyan',
+                '金鹰基金': 'pink',
+                '财通基金': 'amber',
+                '浙商基金': 'emerald',
+                '前海开源基金': 'lime',
+                '银河基金': 'sky',
+                '国联安基金': 'violet',
+                '申万菱信基金': 'fuchsia',
+                '宝盈基金': 'rose',
+                '长盛基金': 'slate',
+                // 私募基金 - 特殊颜色
+                '景林资产': 'jinglin',
+                '高毅资产': 'jinglin',
+                '淡水泉投资': 'jinglin',
+                '重阳投资': 'jinglin',
+                '千合资本': 'jinglin',
+                '和王投资': 'jinglin',
+                '幻方量化': 'jinglin',
+                '九坤投资': 'jinglin',
+                '明汯投资': 'jinglin',
+                '灵均投资': 'jinglin',
+                '衍复投资': 'jinglin',
+                '希瓦资产': 'jinglin',
+                '林园投资': 'jinglin',
+                '东方港湾': 'jinglin',
+                '汉和资本': 'jinglin',
+                '源乐晟资产': 'jinglin',
+                '朱雀基金': 'jinglin',
+                '星石投资': 'jinglin',
+            };
+            // 检查是否包含关键词
+            for (const [key, value] of Object.entries(colorMap)) {
+                if (company.includes(key) || key.includes(company)) {
+                    return value;
+                }
+            }
+            // 默认颜色
+            return 'default';
         }
 
         function sortTable(field) {
@@ -726,14 +810,16 @@ export class StockController {
                 const res = await fetch('/api/detail?code=' + code);
                 const data = await res.json();
                 document.getElementById('modalTitle').textContent = name + ' (' + code + ') 持仓明细';
-                const html = data.map(d => '<tr>' +
-                    '<td>' + d.持仓基金 + '</td>' +
-                    '<td><span class="company-tag">' + d.基金公司 + '</span></td>' +
-                    '<td>' + d.持仓股数万股 + '</td>' +
-                    '<td>' + d.持仓比例 + '</td>' +
-                    '<td>' + d.持仓市值万元 + '</td>' +
-                    '</tr>'
-                ).join('');
+                const html = data.map(d => {
+                    const colorClass = getCompanyColorClass(d.基金公司);
+                    return '<tr>' +
+                        '<td>' + d.持仓基金 + '</td>' +
+                        '<td><span class="company-tag ' + colorClass + '">' + d.基金公司 + '</span></td>' +
+                        '<td>' + d.持仓股数万股 + '</td>' +
+                        '<td>' + d.持仓比例 + '</td>' +
+                        '<td>' + d.持仓市值万元 + '</td>' +
+                        '</tr>';
+                }).join('');
                 document.getElementById('detailTable').innerHTML = html;
                 document.getElementById('detailModal').classList.add('active');
             } catch (e) {
@@ -1886,10 +1972,26 @@ export class StockController {
             margin: 2px;
         }
 
-        .company-tag.huaxia { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
-        .company-tag.yifangda { background: rgba(249, 115, 22, 0.2); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.3); }
-        .company-tag.zhongou { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+        /* 基金公司标签颜色 */
+        .company-tag.blue { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+        .company-tag.orange { background: rgba(249, 115, 22, 0.2); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.3); }
+        .company-tag.red { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .company-tag.purple { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+        .company-tag.green { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .company-tag.teal { background: rgba(20, 184, 166, 0.2); color: #2dd4bf; border: 1px solid rgba(20, 184, 166, 0.3); }
+        .company-tag.indigo { background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+        .company-tag.cyan { background: rgba(6, 182, 212, 0.2); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); }
+        .company-tag.pink { background: rgba(236, 72, 153, 0.2); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); }
+        .company-tag.amber { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .company-tag.emerald { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .company-tag.lime { background: rgba(132, 204, 22, 0.2); color: #a3e635; border: 1px solid rgba(132, 204, 22, 0.3); }
+        .company-tag.sky { background: rgba(14, 165, 233, 0.2); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
+        .company-tag.violet { background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); }
+        .company-tag.fuchsia { background: rgba(217, 70, 239, 0.2); color: #e879f9; border: 1px solid rgba(217, 70, 239, 0.3); }
+        .company-tag.rose { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+        .company-tag.slate { background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3); }
         .company-tag.jinglin { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .company-tag.default { background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
 
         .action-btns {
             display: flex;
