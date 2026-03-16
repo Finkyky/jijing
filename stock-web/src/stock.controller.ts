@@ -26,6 +26,23 @@ export class StockController {
     res.send(html);
   }
 
+  // 投资策略页
+  @Get('strategies')
+  getStrategiesPage(@Res() res: Response) {
+    const html = this.generateStrategiesPage();
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  }
+
+  // API: 获取策略数据
+  @Get('api/strategies')
+  getStrategiesData(@Query('date') date?: string) {
+    if (date) {
+      this.stockService.loadDataByDate(date);
+    }
+    return this.stockService.getStrategiesData();
+  }
+
   // 分析详情页
   @Get('analysis/:id')
   getAnalysisDetailPage(@Param('id') id: string, @Res() res: Response) {
@@ -318,6 +335,7 @@ export class StockController {
                     <h1>📈 股票筛选数据平台</h1>
                     <div class="nav-links">
                         <a href="/" class="nav-link active">📊 数据列表</a>
+                        <a href="/strategies" class="nav-link">💡 投资策略</a>
                         <a href="/analyses" class="nav-link">🤖 AI分析</a>
                     </div>
                 </div>
@@ -1147,6 +1165,7 @@ export class StockController {
                     <h1>🤖 AI分析报告</h1>
                     <div class="nav-links">
                         <a href="/" class="nav-link">📊 数据列表</a>
+                        <a href="/strategies" class="nav-link">💡 投资策略</a>
                         <a href="/analyses" class="nav-link active">🤖 AI分析</a>
                     </div>
                 </div>
@@ -1204,6 +1223,477 @@ export class StockController {
             </div>
         </div>
     </div>
+</body>
+</html>`;
+  }
+
+  // 生成投资策略页
+  private generateStrategiesPage(): string {
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>投资策略 - 股票筛选平台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        ${this.getCommonStyles()}
+
+        .strategy-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .strategy-tab {
+            padding: 12px 24px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-secondary);
+        }
+        .strategy-tab:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .strategy-tab.active {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            border-color: var(--primary);
+        }
+        .strategy-desc {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .strategy-desc h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .strategy-desc p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .strategy-table-container {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .strategy-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .strategy-table th, .strategy-table td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        .strategy-table th {
+            background: var(--bg-secondary);
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 13px;
+            position: sticky;
+            top: 0;
+        }
+        .strategy-table tr:hover {
+            background: var(--bg-card-hover);
+        }
+        .rank-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .rank-1 { background: linear-gradient(135deg, #ffd700, #ffb700); color: #000; }
+        .rank-2 { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #000; }
+        .rank-3 { background: linear-gradient(135deg, #cd7f32, #b5651d); color: #fff; }
+        .rank-other { background: var(--bg-secondary); color: var(--text-secondary); }
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-right: 4px;
+            margin-bottom: 4px;
+        }
+        .tag-hot { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .tag-focus { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .tag-potential { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+        .tag-consensus { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .tag-heavy { background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); }
+        .tag-leader { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); }
+        .score-bar {
+            width: 100px;
+            height: 6px;
+            background: var(--bg-secondary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .score-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+        .score-high { background: linear-gradient(90deg, #34d399, #10b981); }
+        .score-medium { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+        .score-low { background: linear-gradient(90deg, #f87171, #ef4444); }
+        .cap-tag {
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .cap-super { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+        .cap-large { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .cap-medium { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+        .cap-small { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .loading-state {
+            text-align: center;
+            padding: 60px;
+            color: var(--text-secondary);
+        }
+        @media (max-width: 768px) {
+            .strategy-tabs {
+                overflow-x: auto;
+                flex-wrap: nowrap;
+            }
+            .strategy-table th, .strategy-table td {
+                padding: 10px 8px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-left">
+                <h1 class="logo">📈 股票筛选平台</h1>
+                <nav class="nav">
+                    <a href="/" class="nav-link">📊 数据列表</a>
+                    <a href="/strategies" class="nav-link active">💡 投资策略</a>
+                    <a href="/analyses" class="nav-link">🤖 AI分析</a>
+                </nav>
+            </div>
+            <div class="header-right">
+                <div class="date-selector">
+                    <label for="dateSelect">📅 选择日期</label>
+                    <select id="dateSelect" onchange="loadData()">
+                        <option value="">加载中...</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <div class="strategy-tabs" id="strategyTabs">
+            <button class="strategy-tab active" data-strategy="consensus" onclick="switchStrategy('consensus')">
+                🎯 共识度策略
+            </button>
+            <button class="strategy-tab" data-strategy="concentration" onclick="switchStrategy('concentration')">
+                📊 持仓集中度
+            </button>
+            <button class="strategy-tab" data-strategy="coverage" onclick="switchStrategy('coverage')">
+                🔥 机构覆盖度
+            </button>
+            <button class="strategy-tab" data-strategy="leader" onclick="switchStrategy('leader')">
+                🏆 行业龙头
+            </button>
+            <button class="strategy-tab" data-strategy="marketcap" onclick="switchStrategy('marketcap')">
+                💰 市值因子
+            </button>
+        </div>
+
+        <div class="strategy-desc" id="strategyDesc">
+            <h3>🎯 共识度策略</h3>
+            <p>计算公式：持仓基金数量 × 基金公司数量。多家基金公司共同看好的股票，市场共识强，投资价值相对较高。</p>
+        </div>
+
+        <div class="table-container" style="max-height: calc(100vh - 320px); overflow: auto;">
+            <table class="strategy-table">
+                <thead id="tableHead">
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="8" class="loading-state">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let currentData = [];
+        let currentStrategy = 'consensus';
+
+        const strategyConfigs = {
+            consensus: {
+                title: '🎯 共识度策略',
+                desc: '计算公式：持仓基金数量 × 基金公司数量。多家基金公司共同看好的股票，市场共识强，投资价值相对较高。',
+                columns: ['排名', '股票代码', '股票名称', '市值(亿)', '行业', '基金数', '公司数', '共识度得分', '标签'],
+                sortField: 'consensusScore',
+                sortOrder: 'desc'
+            },
+            concentration: {
+                title: '📊 持仓集中度策略',
+                desc: '计算公式：持仓比例合计 / 持仓基金数量 = 平均每只基金持仓比例。数值越高表示基金重仓持有，信心更强。',
+                columns: ['排名', '股票代码', '股票名称', '市值(亿)', '行业', '基金数', '平均持仓比例', '集中度评级', '标签'],
+                sortField: 'avgHoldingRatio',
+                sortOrder: 'desc'
+            },
+            coverage: {
+                title: '🔥 机构覆盖度策略',
+                desc: '根据持仓基金数量分级：50+只为热门股，20-50只为关注股，10-20只为潜力股，10以下为冷门股。',
+                columns: ['排名', '股票代码', '股票名称', '市值(亿)', '行业', '基金数', '公司数', '覆盖等级', '标签'],
+                sortField: 'fundCount',
+                sortOrder: 'desc'
+            },
+            leader: {
+                title: '🏆 行业龙头策略',
+                desc: '按行业分组，在各自行业内按持仓市值排序，TOP3标记为行业龙头。适合寻找各赛道的领军标的。',
+                columns: ['排名', '股票代码', '股票名称', '行业', '市值(亿)', '基金数', '行业排名', '持仓市值(万)', '标签'],
+                sortField: 'industryRank',
+                sortOrder: 'asc'
+            },
+            marketcap: {
+                title: '💰 市值因子策略',
+                desc: '按市值分级：超大盘(>2000亿)、大盘(500-2000亿)、中盘(100-500亿)、小盘(<100亿)。分析不同市值区间的机构偏好。',
+                columns: ['排名', '股票代码', '股票名称', '市值(亿)', '市值等级', '基金数', '公司数', '共识度得分', '标签'],
+                sortField: 'marketCap',
+                sortOrder: 'desc'
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadDates();
+            await loadData();
+        });
+
+        async function loadDates() {
+            try {
+                const res = await fetch('/api/dates');
+                const dates = await res.json();
+                const select = document.getElementById('dateSelect');
+                select.innerHTML = '<option value="latest">最新数据</option>';
+                dates.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.date;
+                    opt.textContent = d.date;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('加载日期列表失败', e);
+            }
+        }
+
+        async function loadData() {
+            const dateSelect = document.getElementById('dateSelect');
+            const date = dateSelect.value === 'latest' ? '' : dateSelect.value;
+            const url = '/api/strategies' + (date ? '?date=' + date : '');
+
+            try {
+                const res = await fetch(url);
+                currentData = await res.json();
+                renderTable();
+            } catch (e) {
+                console.error('加载数据失败', e);
+                document.getElementById('tableBody').innerHTML = '<tr><td colspan="8" class="loading-state">加载失败</td></tr>';
+            }
+        }
+
+        function switchStrategy(strategy) {
+            currentStrategy = strategy;
+            document.querySelectorAll('.strategy-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.strategy === strategy);
+            });
+            const config = strategyConfigs[strategy];
+            document.getElementById('strategyDesc').innerHTML = '<h3>' + config.title + '</h3><p>' + config.desc + '</p>';
+            renderTable();
+        }
+
+        function renderTable() {
+            const config = strategyConfigs[currentStrategy];
+            let data = [...currentData];
+
+            // 计算各项指标
+            data = calculateMetrics(data);
+
+            // 排序
+            data.sort((a, b) => {
+                const aVal = a[config.sortField];
+                const bVal = b[config.sortField];
+                if (typeof aVal === 'string' && typeof bVal === 'string') {
+                    return config.sortOrder === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                }
+                return config.sortOrder === 'desc' ? (bVal || 0) - (aVal || 0) : (aVal || 0) - (bVal || 0);
+            });
+
+            // 渲染表头
+            document.getElementById('tableHead').innerHTML = '<tr>' + config.columns.map(c => '<th>' + c + '</th>').join('') + '</tr>';
+
+            // 渲染表体
+            const html = data.slice(0, 100).map((item, idx) => {
+                return renderRow(item, idx + 1, currentStrategy);
+            }).join('');
+            document.getElementById('tableBody').innerHTML = html || '<tr><td colspan="' + config.columns.length + '" class="loading-state">暂无数据</td></tr>';
+        }
+
+        function calculateMetrics(data) {
+            // 按行业分组用于龙头策略
+            const industryGroups = {};
+            data.forEach(item => {
+                const industry = item.所属行业 || '其他';
+                if (!industryGroups[industry]) industryGroups[industry] = [];
+                industryGroups[industry].push(item);
+            });
+
+            // 计算每只股票的持仓市值
+            data.forEach(item => {
+                // 共识度得分
+                const companyCount = item.持仓基金公司 ? item.持仓基金公司.split('、').length : 0;
+                item.companyCount = companyCount;
+                item.consensusScore = item.持仓基金数量 * companyCount;
+
+                // 平均持仓比例
+                const holdingRatioSum = item.持仓比例合计 ? parseFloat(item.持仓比例合计.replace('%', '').replace(',', '')) || 0 : 0;
+                item.avgHoldingRatio = item.持仓基金数量 > 0 ? (holdingRatioSum / item.持仓基金数量).toFixed(2) : 0;
+
+                // 市值等级
+                const cap = item.总市值亿;
+                if (cap >= 2000) item.capLevel = '超大盘';
+                else if (cap >= 500) item.capLevel = '大盘';
+                else if (cap >= 100) item.capLevel = '中盘';
+                else item.capLevel = '小盘';
+
+                // 行业排名
+                const industry = item.所属行业 || '其他';
+                const group = industryGroups[industry] || [];
+                const sortedGroup = [...group].sort((a, b) => {
+                    const aVal = parseFloat(a.合计持仓市值万元?.replace(/,/g, '') || 0);
+                    const bVal = parseFloat(b.合计持仓市值万元?.replace(/,/g, '') || 0);
+                    return bVal - aVal;
+                });
+                item.industryRank = sortedGroup.findIndex(s => s.股票代码 === item.股票代码) + 1;
+                item.industryTotal = group.length;
+
+                // 持仓市值数值
+                item.holdingMarketValue = parseFloat(item.合计持仓市值万元?.replace(/,/g, '') || 0);
+            });
+
+            return data;
+        }
+
+        function renderRow(item, rank, strategy) {
+            const rankClass = rank <= 3 ? 'rank-' + rank : 'rank-other';
+            const tags = getTags(item, strategy);
+
+            if (strategy === 'consensus') {
+                const scorePercent = Math.min(item.consensusScore / 500, 1) * 100;
+                const scoreClass = scorePercent >= 70 ? 'score-high' : scorePercent >= 40 ? 'score-medium' : 'score-low';
+                return '<tr>' +
+                    '<td><span class="rank-badge ' + rankClass + '">' + rank + '</span></td>' +
+                    '<td class="stock-code">' + item.股票代码 + '</td>' +
+                    '<td class="stock-name">' + item.股票名称 + '</td>' +
+                    '<td>' + item.总市值亿.toFixed(0) + '</td>' +
+                    '<td>' + (item.所属行业 || '-') + '</td>' +
+                    '<td><span class="fund-count">' + item.持仓基金数量 + '</span></td>' +
+                    '<td>' + item.companyCount + '</td>' +
+                    '<td><div class="score-bar"><div class="score-bar-fill ' + scoreClass + '" style="width: ' + scorePercent + '%"></div></div><span style="margin-left: 8px; font-size: 12px;">' + item.consensusScore + '</span></td>' +
+                    '<td>' + tags + '</td>' +
+                    '</tr>';
+            } else if (strategy === 'concentration') {
+                const ratio = parseFloat(item.avgHoldingRatio);
+                const rating = ratio >= 5 ? '高度集中' : ratio >= 2 ? '中度集中' : '分散配置';
+                const ratingClass = ratio >= 5 ? 'tag-heavy' : ratio >= 2 ? 'tag-focus' : 'tag-potential';
+                return '<tr>' +
+                    '<td><span class="rank-badge ' + rankClass + '">' + rank + '</span></td>' +
+                    '<td class="stock-code">' + item.股票代码 + '</td>' +
+                    '<td class="stock-name">' + item.股票名称 + '</td>' +
+                    '<td>' + item.总市值亿.toFixed(0) + '</td>' +
+                    '<td>' + (item.所属行业 || '-') + '</td>' +
+                    '<td><span class="fund-count">' + item.持仓基金数量 + '</span></td>' +
+                    '<td>' + item.avgHoldingRatio + '%</td>' +
+                    '<td><span class="tag ' + ratingClass + '">' + rating + '</span></td>' +
+                    '<td>' + tags + '</td>' +
+                    '</tr>';
+            } else if (strategy === 'coverage') {
+                const fc = item.持仓基金数量;
+                let level, levelClass;
+                if (fc >= 50) { level = '热门股'; levelClass = 'tag-hot'; }
+                else if (fc >= 20) { level = '关注股'; levelClass = 'tag-focus'; }
+                else if (fc >= 10) { level = '潜力股'; levelClass = 'tag-potential'; }
+                else { level = '冷门股'; levelClass = 'tag-potential'; }
+                return '<tr>' +
+                    '<td><span class="rank-badge ' + rankClass + '">' + rank + '</span></td>' +
+                    '<td class="stock-code">' + item.股票代码 + '</td>' +
+                    '<td class="stock-name">' + item.股票名称 + '</td>' +
+                    '<td>' + item.总市值亿.toFixed(0) + '</td>' +
+                    '<td>' + (item.所属行业 || '-') + '</td>' +
+                    '<td><span class="fund-count">' + fc + '</span></td>' +
+                    '<td>' + item.companyCount + '</td>' +
+                    '<td><span class="tag ' + levelClass + '">' + level + '</span></td>' +
+                    '<td>' + tags + '</td>' +
+                    '</tr>';
+            } else if (strategy === 'leader') {
+                const isLeader = item.industryRank <= 3;
+                return '<tr>' +
+                    '<td><span class="rank-badge ' + rankClass + '">' + rank + '</span></td>' +
+                    '<td class="stock-code">' + item.股票代码 + '</td>' +
+                    '<td class="stock-name">' + item.股票名称 + '</td>' +
+                    '<td>' + (item.所属行业 || '-') + '</td>' +
+                    '<td>' + item.总市值亿.toFixed(0) + '</td>' +
+                    '<td>' + item.持仓基金数量 + '</td>' +
+                    '<td>' + item.industryRank + '/' + item.industryTotal + '</td>' +
+                    '<td>' + (item.holdingMarketValue / 10000).toFixed(2) + '亿</td>' +
+                    '<td>' + (isLeader ? '<span class="tag tag-leader">🏆 行业龙头</span>' : '') + '</td>' +
+                    '</tr>';
+            } else if (strategy === 'marketcap') {
+                const capClass = item.capLevel === '超大盘' ? 'cap-super' : item.capLevel === '大盘' ? 'cap-large' : item.capLevel === '中盘' ? 'cap-medium' : 'cap-small';
+                const scorePercent = Math.min(item.consensusScore / 500, 1) * 100;
+                const scoreClass = scorePercent >= 70 ? 'score-high' : scorePercent >= 40 ? 'score-medium' : 'score-low';
+                return '<tr>' +
+                    '<td><span class="rank-badge ' + rankClass + '">' + rank + '</span></td>' +
+                    '<td class="stock-code">' + item.股票代码 + '</td>' +
+                    '<td class="stock-name">' + item.股票名称 + '</td>' +
+                    '<td>' + item.总市值亿.toFixed(0) + '</td>' +
+                    '<td><span class="cap-tag ' + capClass + '">' + item.capLevel + '</span></td>' +
+                    '<td>' + item.持仓基金数量 + '</td>' +
+                    '<td>' + item.companyCount + '</td>' +
+                    '<td><div class="score-bar"><div class="score-bar-fill ' + scoreClass + '" style="width: ' + scorePercent + '%"></div></div><span style="margin-left: 8px; font-size: 12px;">' + item.consensusScore + '</span></td>' +
+                    '<td>' + tags + '</td>' +
+                    '</tr>';
+            }
+            return '';
+        }
+
+        function getTags(item, strategy) {
+            const tags = [];
+            if (item.持仓基金数量 >= 50) tags.push('<span class="tag tag-hot">热门</span>');
+            if (item.companyCount >= 10) tags.push('<span class="tag tag-consensus">高共识</span>');
+            if (parseFloat(item.avgHoldingRatio) >= 5) tags.push('<span class="tag tag-heavy">重仓</span>');
+            return tags.join('');
+        }
+    </script>
 </body>
 </html>`;
   }
@@ -1365,7 +1855,8 @@ export class StockController {
                     <h1>🤖 AI分析报告</h1>
                     <div class="nav-links">
                         <a href="/" class="nav-link">📊 数据列表</a>
-                        <a href="/analyses" class="nav-link">🤖 AI分析</a>
+                        <a href="/strategies" class="nav-link">💡 投资策略</a>
+                        <a href="/analyses" class="nav-link active">🤖 AI分析</a>
                     </div>
                 </div>
                 <div class="header-right">

@@ -384,4 +384,10 @@ export class StockService {
 
     return Array.from(industries).sort();
   }
+
+  // 获取策略分析数据
+  getStrategiesData(): StockSummary[] {
+    if (!this.data) return [];
+    return this.data.summary;
+  }
 }
