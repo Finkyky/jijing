@@ -133,13 +133,33 @@ export class StockController {
 
   // API: 导出Excel
   @Get('api/export')
-  exportExcel(@Res() res: Response, @Query('date') date?: string) {
+  exportExcel(
+    @Res() res: Response,
+    @Query('date') date?: string,
+    @Query('company') company?: string | string[],
+    @Query('minCap') minCap?: string,
+    @Query('maxCap') maxCap?: string,
+    @Query('industry') industry?: string,
+    @Query('keyword') keyword?: string,
+  ) {
     if (date) {
       this.stockService.loadDataByDate(date);
     }
 
+    // 支持多个基金公司筛选
+    let companies: string[] | undefined;
+    if (company) {
+      companies = Array.isArray(company) ? company : [company];
+    }
+
     try {
-      const buffer = this.stockService.exportToExcel();
+      const buffer = this.stockService.exportToExcel({
+        companies,
+        minMarketCap: minCap ? parseFloat(minCap) : undefined,
+        maxMarketCap: maxCap ? parseFloat(maxCap) : undefined,
+        industry,
+        keyword,
+      });
       const timestamp = date || new Date().toISOString().slice(0, 10);
       res.setHeader(
         'Content-Type',
@@ -768,11 +788,25 @@ export class StockController {
         }
 
         function exportExcel() {
+            const params = new URLSearchParams();
             const dateSelect = document.getElementById('dateSelect');
             const selectedDate = dateSelect.value;
-            let url = '/api/export';
-            if (selectedDate && selectedDate !== 'latest') url += '?date=' + selectedDate;
-            window.location.href = url;
+            if (selectedDate && selectedDate !== 'latest') {
+                params.append('date', selectedDate);
+            }
+            // 添加筛选参数
+            const companies = getSelectedCompanies();
+            companies.forEach(c => params.append('company', c));
+            const minCap = document.getElementById('minCapFilter').value;
+            const maxCap = document.getElementById('maxCapFilter').value;
+            const industry = document.getElementById('industryFilter').value;
+            const keyword = document.getElementById('keywordFilter').value;
+            if (minCap) params.append('minCap', minCap);
+            if (maxCap) params.append('maxCap', maxCap);
+            if (industry) params.append('industry', industry);
+            if (keyword) params.append('keyword', keyword);
+
+            window.location.href = '/api/export?' + params.toString();
         }
 
         document.addEventListener('keypress', function(e) {

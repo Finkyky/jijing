@@ -291,16 +291,29 @@ export class StockService {
     };
   }
 
-  // 导出为Excel
-  exportToExcel(): Buffer {
+  // 导出为Excel（支持筛选）
+  exportToExcel(options: {
+    companies?: string[];
+    minMarketCap?: number;
+    maxMarketCap?: number;
+    industry?: string;
+    keyword?: string;
+  } = {}): Buffer {
     if (!this.data) {
       throw new NotFoundException('暂无数据可导出');
     }
 
+    // 获取筛选后的汇总数据
+    const filteredSummary = this.getSummary(options);
+    const filteredCodes = new Set(filteredSummary.map(item => item.股票代码));
+
+    // 获取筛选后的明细数据
+    const filteredDetail = this.data.detail.filter(item => filteredCodes.has(item.股票代码));
+
     const workbook = XLSX.utils.book_new();
 
     // 创建汇总表
-    const summaryData = this.data.summary.map(item => ({
+    const summaryData = filteredSummary.map(item => ({
       '股票代码': item.股票代码,
       '股票名称': item.股票名称,
       '总市值(亿)': item.总市值亿,
@@ -318,7 +331,7 @@ export class StockService {
     XLSX.utils.book_append_sheet(workbook, summarySheet, '汇总表');
 
     // 创建明细表
-    const detailData = this.data.detail.map(item => ({
+    const detailData = filteredDetail.map(item => ({
       '股票代码': item.股票代码,
       '股票名称': item.股票名称,
       '总市值(亿)': item.总市值亿,
