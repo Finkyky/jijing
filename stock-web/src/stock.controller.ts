@@ -1246,6 +1246,7 @@ export class StockController {
             gap: 8px;
             margin-bottom: 24px;
             flex-wrap: wrap;
+            align-items: center;
         }
         .strategy-tab {
             padding: 12px 24px;
@@ -1265,6 +1266,25 @@ export class StockController {
         .strategy-tab.active {
             background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             color: white;
+            border-color: var(--primary);
+        }
+        .strategy-tabs .date-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+        .strategy-tabs .date-selector select {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .strategy-tabs .date-selector select:focus {
+            outline: none;
             border-color: var(--primary);
         }
         .strategy-desc {
@@ -1378,7 +1398,12 @@ export class StockController {
         @media (max-width: 768px) {
             .strategy-tabs {
                 overflow-x: auto;
-                flex-wrap: nowrap;
+                flex-wrap: wrap;
+            }
+            .strategy-tabs .date-selector {
+                margin-left: 0;
+                width: 100%;
+                margin-top: 8px;
             }
             .strategy-table th, .strategy-table td {
                 padding: 10px 8px;
@@ -1398,23 +1423,16 @@ export class StockController {
                     <a href="/analyses" class="nav-link">🤖 AI分析</a>
                 </nav>
             </div>
-            <div class="header-right">
-                <div class="date-selector">
-                    <label for="dateSelect">📅 选择日期</label>
-                    <select id="dateSelect" onchange="loadData()">
-                        <option value="">加载中...</option>
-                    </select>
-                </div>
-            </div>
         </header>
 
-        <div class="strategy-tabs" id="strategyTabs">
-            <button class="strategy-tab active" data-strategy="consensus" onclick="switchStrategy('consensus')">
-                🎯 共识度策略
-            </button>
-            <button class="strategy-tab" data-strategy="concentration" onclick="switchStrategy('concentration')">
-                📊 持仓集中度
-            </button>
+        <div class="strategy-header">
+            <div class="strategy-tabs" id="strategyTabs">
+                <button class="strategy-tab active" data-strategy="consensus" onclick="switchStrategy('consensus')">
+                    🎯 共识度策略
+                </button>
+                <button class="strategy-tab" data-strategy="concentration" onclick="switchStrategy('concentration')">
+                    📊 持仓集中度
+                </button>
             <button class="strategy-tab" data-strategy="coverage" onclick="switchStrategy('coverage')">
                 🔥 机构覆盖度
             </button>
@@ -1424,6 +1442,12 @@ export class StockController {
             <button class="strategy-tab" data-strategy="marketcap" onclick="switchStrategy('marketcap')">
                 💰 市值因子
             </button>
+            <div class="date-selector" style="margin-left: auto;">
+                <label for="dateSelect">📅</label>
+                <select id="dateSelect" onchange="loadData()">
+                    <option value="">加载中...</option>
+                </select>
+            </div>
         </div>
 
         <div class="strategy-desc" id="strategyDesc">
