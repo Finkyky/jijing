@@ -282,14 +282,14 @@ export class StockController {
     <div class="container">
         <div class="header">
             <div class="header-content">
-                <div>
+                <div class="header-left">
                     <h1>📈 股票筛选数据平台</h1>
-                </div>
-                <div class="date-section">
                     <div class="nav-links">
                         <a href="/" class="nav-link active">📊 数据列表</a>
                         <a href="/analyses" class="nav-link">🤖 AI分析</a>
                     </div>
+                </div>
+                <div class="header-right">
                     <div class="date-selector">
                         <label for="dateSelect">📅 选择日期</label>
                         <select id="dateSelect" onchange="changeDate()">
@@ -972,15 +972,15 @@ export class StockController {
     <div class="container">
         <div class="header">
             <div class="header-content">
-                <div>
+                <div class="header-left">
                     <h1>🤖 AI分析报告</h1>
-                    <p class="subtitle">查看所有股票的AI投资分析报告</p>
-                </div>
-                <div class="date-section">
                     <div class="nav-links">
                         <a href="/" class="nav-link">📊 数据列表</a>
                         <a href="/analyses" class="nav-link active">🤖 AI分析</a>
                     </div>
+                </div>
+                <div class="header-right">
+                    <p class="subtitle">查看所有股票的AI投资分析报告</p>
                 </div>
             </div>
         </div>
@@ -1190,15 +1190,15 @@ export class StockController {
     <div class="container">
         <div class="header">
             <div class="header-content">
-                <div>
+                <div class="header-left">
                     <h1>🤖 AI分析报告</h1>
-                    <p class="subtitle">${analysis.stockName} (${analysis.stockCode}) - 分析日期：${analysis.date}</p>
-                </div>
-                <div class="date-section">
                     <div class="nav-links">
                         <a href="/" class="nav-link">📊 数据列表</a>
                         <a href="/analyses" class="nav-link">🤖 AI分析</a>
                     </div>
+                </div>
+                <div class="header-right">
+                    <p class="subtitle">${analysis.stockName} (${analysis.stockCode}) - 分析日期：${analysis.date}</p>
                 </div>
             </div>
         </div>
@@ -1417,19 +1417,34 @@ export class StockController {
         .header-content {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             flex-wrap: wrap;
             gap: 20px;
         }
 
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .header-left h1 {
+            margin-bottom: 0;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
         .header h1 {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 700;
             background: linear-gradient(135deg, var(--text-primary) 0%, var(--primary-light) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            margin-bottom: 8px;
         }
 
         .header .subtitle {
@@ -1458,7 +1473,6 @@ export class StockController {
         .nav-links {
             display: flex;
             gap: 8px;
-            margin-bottom: 12px;
         }
 
         .nav-link {
@@ -1482,13 +1496,6 @@ export class StockController {
             color: var(--text-primary);
             background: var(--primary);
             border-color: var(--primary);
-        }
-
-        .date-section {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            align-items: flex-end;
         }
 
         .date-selector {
@@ -2075,10 +2082,11 @@ export class StockController {
         @media (max-width: 768px) {
             .container { padding: 16px; }
             .header { padding: 20px; }
-            .header h1 { font-size: 24px; }
-            .header-content { flex-direction: column; }
-            .date-section { align-items: flex-start; width: 100%; }
-            .nav-links { width: 100%; justify-content: center; }
+            .header h1 { font-size: 22px; }
+            .header-content { flex-direction: column; align-items: flex-start; gap: 16px; }
+            .header-left { flex-direction: column; align-items: flex-start; gap: 12px; width: 100%; }
+            .header-right { flex-direction: column; align-items: flex-start; width: 100%; }
+            .nav-links { width: 100%; }
             .filter-row { flex-direction: column; }
             .filter-group { width: 100%; }
             .filter-group input, .filter-group select { width: 100%; }
