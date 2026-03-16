@@ -184,7 +184,7 @@ export class StockService {
 
   // 获取汇总数据（支持筛选）
   getSummary(options: {
-    company?: string;
+    companies?: string[];
     minMarketCap?: number;
     maxMarketCap?: number;
     industry?: string;
@@ -194,10 +194,10 @@ export class StockService {
 
     let result = [...this.data.summary];
 
-    // 按基金公司筛选
-    if (options.company) {
+    // 按基金公司筛选（支持多选，必须同时包含所有选中的公司）
+    if (options.companies && options.companies.length > 0) {
       result = result.filter(item =>
-        item.持仓基金公司.includes(options.company!)
+        options.companies!.every(company => item.持仓基金公司.includes(company))
       );
     }
 

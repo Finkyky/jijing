@@ -77,14 +77,19 @@ export class StockController {
   // API: 获取汇总数据
   @Get('api/summary')
   getSummary(
-    @Query('company') company?: string,
+    @Query('company') company?: string | string[],
     @Query('minCap') minCap?: string,
     @Query('maxCap') maxCap?: string,
     @Query('industry') industry?: string,
     @Query('keyword') keyword?: string,
   ) {
+    // 支持多个基金公司筛选（数组或单个值）
+    let companies: string[] | undefined;
+    if (company) {
+      companies = Array.isArray(company) ? company : [company];
+    }
     return this.stockService.getSummary({
-      company,
+      companies,
       minMarketCap: minCap ? parseFloat(minCap) : undefined,
       maxMarketCap: maxCap ? parseFloat(maxCap) : undefined,
       industry,
@@ -302,9 +307,19 @@ export class StockController {
             <div class="filter-row">
                 <div class="filter-group">
                     <label>基金公司</label>
-                    <select id="companyFilter">
-                        <option value="">全部</option>
-                    </select>
+                    <div class="multi-select-container" id="companyFilterContainer">
+                        <div class="multi-select-trigger" onclick="toggleCompanyDropdown()">
+                            <span id="companyFilterText">全部</span>
+                            <svg class="dropdown-icon" width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                        <div class="multi-select-dropdown" id="companyFilterDropdown">
+                            <label class="multi-select-option">
+                                <input type="checkbox" value="" onchange="updateCompanyFilterText()"> 全部
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 <div class="filter-group">
                     <label>最小市值(亿)</label>
@@ -500,20 +515,87 @@ export class StockController {
             try {
                 const res = await fetch('/api/companies');
                 const companies = await res.json();
-                const select = document.getElementById('companyFilter');
-                const currentValue = select.value;
-                select.innerHTML = '<option value="">全部</option>';
+                const dropdown = document.getElementById('companyFilterDropdown');
+                dropdown.innerHTML = '<label class="multi-select-option"><input type="checkbox" value="" onchange="toggleAllCompanies()"> 全部</label>';
                 companies.forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c;
-                    opt.textContent = c;
-                    select.appendChild(opt);
+                    const label = document.createElement('label');
+                    label.className = 'multi-select-option';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = c;
+                    checkbox.onchange = onCompanyChange;
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(' ' + c));
+                    dropdown.appendChild(label);
                 });
-                select.value = currentValue;
+                updateCompanyFilterText();
             } catch (e) {
                 console.error('加载公司列表失败', e);
             }
         }
+
+        function toggleCompanyDropdown() {
+            const trigger = document.querySelector('.multi-select-trigger');
+            const dropdown = document.getElementById('companyFilterDropdown');
+            const isOpen = dropdown.classList.contains('show');
+            if (isOpen) {
+                dropdown.classList.remove('show');
+                trigger.classList.remove('active');
+            } else {
+                dropdown.classList.add('show');
+                trigger.classList.add('active');
+            }
+        }
+
+        function getSelectedCompanies() {
+            const dropdown = document.getElementById('companyFilterDropdown');
+            if (!dropdown) return [];
+            const checkboxes = dropdown.querySelectorAll('input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => cb.value).filter(v => v !== '');
+        }
+
+        function toggleAllCompanies() {
+            const dropdown = document.getElementById('companyFilterDropdown');
+            const allCheckbox = dropdown.querySelector('input[value=""]');
+            const otherCheckboxes = dropdown.querySelectorAll('input[type="checkbox"]:not([value=""])');
+            otherCheckboxes.forEach(cb => cb.checked = false);
+            allCheckbox.checked = true;
+            updateCompanyFilterText();
+        }
+
+        function updateCompanyFilterText() {
+            const selected = getSelectedCompanies();
+            const textEl = document.getElementById('companyFilterText');
+            const dropdown = document.getElementById('companyFilterDropdown');
+            const allCheckbox = dropdown.querySelector('input[value=""]');
+
+            if (selected.length === 0) {
+                textEl.textContent = '全部';
+                allCheckbox.checked = true;
+            } else {
+                textEl.textContent = '已选择 ' + selected.length + ' 个';
+                allCheckbox.checked = false;
+            }
+        }
+
+        // 当用户点击非"全部"选项时
+        function onCompanyChange() {
+            const dropdown = document.getElementById('companyFilterDropdown');
+            const allCheckbox = dropdown.querySelector('input[value=""]');
+            const selected = getSelectedCompanies();
+            // 如果有选中的公司，取消"全部"的勾选
+            if (selected.length > 0) {
+                allCheckbox.checked = false;
+            } else {
+                allCheckbox.checked = true;
+            }
+            updateCompanyFilterText();
+        }
+
+        // 点击下拉项时不关闭下拉框（允许选择多个）
+        document.getElementById('companyFilterDropdown').addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
 
         async function loadIndustries() {
             try {
@@ -536,12 +618,12 @@ export class StockController {
 
         async function loadSummary() {
             const params = new URLSearchParams();
-            const company = document.getElementById('companyFilter').value;
+            const companies = getSelectedCompanies();
+            companies.forEach(c => params.append('company', c));
             const minCap = document.getElementById('minCapFilter').value;
             const maxCap = document.getElementById('maxCapFilter').value;
             const industry = document.getElementById('industryFilter').value;
             const keyword = document.getElementById('keywordFilter').value;
-            if (company) params.append('company', company);
             if (minCap) params.append('minCap', minCap);
             if (maxCap) params.append('maxCap', maxCap);
             if (industry) params.append('industry', industry);
@@ -605,7 +687,14 @@ export class StockController {
 
         function applyFilters() { loadSummary(); }
         function resetFilters() {
-            document.getElementById('companyFilter').value = '';
+            // Reset company filter
+            const dropdown = document.getElementById('companyFilterDropdown');
+            const allCheckbox = dropdown.querySelector('input[value=""]');
+            const otherCheckboxes = dropdown.querySelectorAll('input[type="checkbox"]:not([value=""])');
+            otherCheckboxes.forEach(cb => cb.checked = false);
+            allCheckbox.checked = true;
+            updateCompanyFilterText();
+
             document.getElementById('minCapFilter').value = '';
             document.getElementById('maxCapFilter').value = '';
             document.getElementById('industryFilter').value = '';
@@ -702,6 +791,24 @@ export class StockController {
             if (e.key === 'Escape') {
                 closeModal();
                 closeAnalyzeModal();
+                // Close company dropdown
+                const dropdown = document.getElementById('companyFilterDropdown');
+                const trigger = document.querySelector('.multi-select-trigger');
+                if (dropdown && trigger) {
+                    dropdown.classList.remove('show');
+                    trigger.classList.remove('active');
+                }
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const container = document.getElementById('companyFilterContainer');
+            const dropdown = document.getElementById('companyFilterDropdown');
+            const trigger = document.querySelector('.multi-select-trigger');
+            if (container && dropdown && trigger && !container.contains(e.target)) {
+                dropdown.classList.remove('show');
+                trigger.classList.remove('active');
             }
         });
     </script>
@@ -1498,6 +1605,72 @@ export class StockController {
         .filter-group input::placeholder { color: var(--text-muted); }
         .filter-group input:hover, .filter-group select:hover { border-color: var(--primary); }
         .filter-group input:focus, .filter-group select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+
+        /* Multi-select styles */
+        .multi-select-container {
+            position: relative;
+            min-width: 200px;
+        }
+        .multi-select-trigger {
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+        .multi-select-trigger:hover { border-color: var(--primary); }
+        .multi-select-trigger:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+        .multi-select-trigger.active { border-color: var(--primary); }
+        .dropdown-icon { transition: transform 0.2s; }
+        .multi-select-trigger.active .dropdown-icon { transform: rotate(180deg); }
+        .multi-select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-top: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 100;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        .multi-select-dropdown.show { display: block; }
+        .multi-select-option {
+            display: flex;
+            align-items: center;
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: background 0.15s;
+            font-size: 14px;
+        }
+        .multi-select-option:hover { background: var(--bg-secondary); }
+        .multi-select-option input { margin-right: 10px; width: 16px; height: 16px; cursor: pointer; }
+        .multi-select-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+        .multi-select-tag {
+            background: var(--primary);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .multi-select-tag .remove-tag {
+            cursor: pointer;
+            opacity: 0.8;
+        }
+        .multi-select-tag .remove-tag:hover { opacity: 1; }
 
         .actions {
             display: flex;
