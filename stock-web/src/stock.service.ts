@@ -291,7 +291,7 @@ export class StockService {
     };
   }
 
-  // 导出为Excel（支持筛选）
+  // 导出为Excel（支持筛选，优化内存）
   exportToExcel(options: {
     companies?: string[];
     minMarketCap?: number;
@@ -305,49 +305,56 @@ export class StockService {
 
     // 获取筛选后的汇总数据
     const filteredSummary = this.getSummary(options);
-    const filteredCodes = new Set(filteredSummary.map(item => item.股票代码));
-
-    // 获取筛选后的明细数据
-    const filteredDetail = this.data.detail.filter(item => filteredCodes.has(item.股票代码));
 
     const workbook = XLSX.utils.book_new();
 
     // 创建汇总表
-    const summaryData = filteredSummary.map(item => ({
+    const summarySheet = XLSX.utils.json_to_sheet(filteredSummary.map(item => ({
       '股票代码': item.股票代码,
       '股票名称': item.股票名称,
       '总市值(亿)': item.总市值亿,
-      '所属行业': item.所属行业,
-      '证监会行业': item.证监会行业,
+      '所属行业': item.所属行业 || '',
+      '证监会行业': item.证监会行业 || '',
       '持仓基金数量': item.持仓基金数量,
       '持仓基金公司': item.持仓基金公司,
       '持仓基金列表': item.持仓基金列表,
       '合计持仓股数(万股)': item.合计持仓股数万股,
       '持仓比例合计': item.持仓比例合计,
       '合计持仓市值(万元)': item.合计持仓市值万元,
-    }));
-
-    const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+    })));
     XLSX.utils.book_append_sheet(workbook, summarySheet, '汇总表');
 
-    // 创建明细表
-    const detailData = filteredDetail.map(item => ({
+    // 生成Buffer
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  }
+
+  // 导出单只股票明细Excel
+  exportDetailExcel(code: string, name: string): Buffer {
+    if (!this.data) {
+      throw new NotFoundException('暂无数据可导出');
+    }
+
+    const detail = this.data.detail.filter(item => item.股票代码 === code);
+    if (detail.length === 0) {
+      throw new NotFoundException('未找到该股票明细数据');
+    }
+
+    const workbook = XLSX.utils.book_new();
+
+    const detailSheet = XLSX.utils.json_to_sheet(detail.map(item => ({
       '股票代码': item.股票代码,
       '股票名称': item.股票名称,
       '总市值(亿)': item.总市值亿,
-      '所属行业': item.所属行业,
-      '证监会行业': item.证监会行业,
+      '所属行业': item.所属行业 || '',
+      '证监会行业': item.证监会行业 || '',
       '持仓基金': item.持仓基金,
       '基金公司': item.基金公司,
       '持仓股数(万股)': item.持仓股数万股,
       '持仓比例(%)': item.持仓比例,
       '持仓市值(万元)': item.持仓市值万元,
-    }));
+    })));
+    XLSX.utils.book_append_sheet(workbook, detailSheet, name.substring(0, 28)); // sheet名最长31字符
 
-    const detailSheet = XLSX.utils.json_to_sheet(detailData);
-    XLSX.utils.book_append_sheet(workbook, detailSheet, '明细表');
-
-    // 生成Buffer
     return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   }
 

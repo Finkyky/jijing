@@ -131,7 +131,7 @@ export class StockController {
     return this.stockService.getIndustries();
   }
 
-  // API: 导出Excel
+  // API: 导出汇总表Excel
   @Get('api/export')
   exportExcel(
     @Res() res: Response,
@@ -152,14 +152,16 @@ export class StockController {
       companies = Array.isArray(company) ? company : [company];
     }
 
+    const options = {
+      companies,
+      minMarketCap: minCap ? parseFloat(minCap) : undefined,
+      maxMarketCap: maxCap ? parseFloat(maxCap) : undefined,
+      industry,
+      keyword,
+    };
+
     try {
-      const buffer = this.stockService.exportToExcel({
-        companies,
-        minMarketCap: minCap ? parseFloat(minCap) : undefined,
-        maxMarketCap: maxCap ? parseFloat(maxCap) : undefined,
-        industry,
-        keyword,
-      });
+      const buffer = this.stockService.exportToExcel(options);
       const timestamp = date || new Date().toISOString().slice(0, 10);
       res.setHeader(
         'Content-Type',
@@ -172,6 +174,36 @@ export class StockController {
       res.send(buffer);
     } catch (error) {
       throw new NotFoundException('导出失败：暂无数据');
+    }
+  }
+
+  // API: 导出单只股票明细Excel
+  @Get('api/export/detail')
+  exportDetailExcel(
+    @Res() res: Response,
+    @Query('code') code: string,
+    @Query('name') name: string,
+    @Query('date') date?: string,
+  ) {
+    if (date) {
+      this.stockService.loadDataByDate(date);
+    }
+
+    try {
+      const buffer = this.stockService.exportDetailExcel(code, name);
+      const timestamp = date || new Date().toISOString().slice(0, 10);
+      const filename = `${code}_${name}_detail_${timestamp}.xlsx`;
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      );
+      res.send(buffer);
+    } catch (error) {
+      throw new NotFoundException('导出失败：' + (error.message || '暂无数据'));
     }
   }
 
@@ -324,7 +356,7 @@ export class StockController {
                 <h3>筛选条件</h3>
             </div>
             <div class="filter-row">
-                <div class="filter-group">
+                <div class="filter-group multi-select-group">
                     <label>基金公司</label>
                     <div class="multi-select-container" id="companyFilterContainer">
                         <div class="multi-select-trigger" onclick="toggleCompanyDropdown()">
@@ -370,7 +402,7 @@ export class StockController {
                         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                         </svg>
-                        导出
+                        导出汇总表
                     </button>
                 </div>
             </div>
@@ -409,7 +441,15 @@ export class StockController {
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="modalTitle">持仓明细</h3>
-                <button class="close-btn" onclick="closeModal()">×</button>
+                <div class="modal-header-actions">
+                    <button class="btn btn-sm btn-success" onclick="exportDetailExcel()">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        导出明细
+                    </button>
+                    <button class="close-btn" onclick="closeModal()">×</button>
+                </div>
             </div>
             <div class="modal-body">
                 <table class="detail-table">
@@ -449,6 +489,8 @@ export class StockController {
         let sortField = '总市值亿';
         let sortOrder = 'desc';
         let currentDate = '';
+        let currentDetailCode = '';  // 当前查看明细的股票代码
+        let currentDetailName = '';  // 当前查看明细的股票名称
 
         document.addEventListener('DOMContentLoaded', async () => {
             await loadDates();
@@ -830,6 +872,8 @@ export class StockController {
         }
 
         async function showDetail(code, name) {
+            currentDetailCode = code;
+            currentDetailName = name;
             try {
                 const res = await fetch('/api/detail?code=' + code);
                 const data = await res.json();
@@ -916,6 +960,23 @@ export class StockController {
             if (keyword) params.append('keyword', keyword);
 
             window.location.href = '/api/export?' + params.toString();
+        }
+
+        function exportDetailExcel() {
+            if (!currentDetailCode) {
+                alert('请先选择要导出的股票');
+                return;
+            }
+            const params = new URLSearchParams();
+            const dateSelect = document.getElementById('dateSelect');
+            const selectedDate = dateSelect.value;
+            if (selectedDate && selectedDate !== 'latest') {
+                params.append('date', selectedDate);
+            }
+            params.append('code', currentDetailCode);
+            params.append('name', currentDetailName);
+
+            window.location.href = '/api/export/detail?' + params.toString();
         }
 
         document.addEventListener('keypress', function(e) {
@@ -1735,6 +1796,11 @@ export class StockController {
             min-width: 150px;
         }
 
+        .filter-group.multi-select-group {
+            min-width: 200px;
+            flex: 0 0 auto;
+        }
+
         .filter-group label {
             font-size: 13px;
             color: var(--text-secondary);
@@ -1773,6 +1839,7 @@ export class StockController {
             justify-content: space-between;
             align-items: center;
             transition: all 0.2s;
+            min-height: 46px;
         }
         .multi-select-trigger:hover { border-color: var(--primary); }
         .multi-select-trigger:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
@@ -1790,7 +1857,7 @@ export class StockController {
             margin-top: 4px;
             max-height: 300px;
             overflow-y: auto;
-            z-index: 100;
+            z-index: 1000;
             display: none;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
@@ -1871,6 +1938,17 @@ export class StockController {
         .btn-success:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+
+        .modal-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .table-container {
@@ -2276,6 +2354,7 @@ export class StockController {
             .nav-links { width: 100%; }
             .filter-row { flex-direction: column; }
             .filter-group { width: 100%; }
+            .filter-group.multi-select-group { min-width: 100%; }
             .filter-group input, .filter-group select { width: 100%; }
             .actions { width: 100%; justify-content: center; margin-left: 0; margin-top: 16px; }
             .btn { flex: 1; justify-content: center; }
