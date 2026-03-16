@@ -673,8 +673,8 @@ export class StockController {
                 const companyTags = companies.map((c, idx) => {
                     const colorClass = getCompanyColorClass(c);
                     // 前6个标签默认显示，其余隐藏
-                    const style = idx >= 6 ? 'display:none;' : '';
-                    return '<span class="company-tag ' + colorClass + '" style="' + style + '">' + c + '</span>';
+                    const hiddenClass = idx >= 6 ? ' hidden-tag' : '';
+                    return '<span class="company-tag ' + colorClass + hiddenClass + '">' + c + '</span>';
                 }).join('');
                 const showMoreBtn = companies.length > 6
                     ? '<button class="show-more-btn" data-count="' + (companies.length - 6) + '" onclick="toggleCompanyTags(this)">+' + (companies.length - 6) + '</button>'
@@ -698,21 +698,16 @@ export class StockController {
         // 展开/收起基金公司标签
         function toggleCompanyTags(btn) {
             const wrapper = btn.parentElement;
-            const tags = wrapper.querySelectorAll('.company-tag');
             const isExpanded = btn.classList.contains('expanded');
             const hiddenCount = parseInt(btn.getAttribute('data-count')) || 0;
 
             if (isExpanded) {
-                // 收起：隐藏第6个之后的标签
-                for (let i = 6; i < tags.length; i++) {
-                    tags[i].style.display = 'none';
-                }
+                // 收起
                 btn.textContent = '+' + hiddenCount;
                 btn.classList.remove('expanded');
                 wrapper.classList.remove('expanded');
             } else {
-                // 展开：显示所有标签
-                tags.forEach(tag => tag.style.display = 'inline-flex');
+                // 展开
                 btn.textContent = '收起';
                 btn.classList.add('expanded');
                 wrapper.classList.add('expanded');
@@ -2039,7 +2034,6 @@ export class StockController {
             max-height: 52px;
             overflow: hidden;
             position: relative;
-            transition: max-height 0.3s ease-out;
         }
         .company-tags-wrapper:not(.expanded)::after {
             content: '';
@@ -2053,10 +2047,12 @@ export class StockController {
         }
         .company-tags-wrapper.expanded {
             max-height: 500px;
-            transition: max-height 0.4s ease-out;
         }
-        .company-tag-hidden {
-            display: none !important;
+        .company-tag.hidden-tag {
+            display: none;
+        }
+        .company-tags-wrapper.expanded .company-tag.hidden-tag {
+            display: inline-flex;
         }
         .show-more-btn {
             background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0.25) 100%);
