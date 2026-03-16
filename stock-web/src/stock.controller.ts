@@ -284,7 +284,6 @@ export class StockController {
             <div class="header-content">
                 <div>
                     <h1>📈 股票筛选数据平台</h1>
-                    <p class="subtitle">筛选条件：总市值 ≥ 200亿 | 持仓基金：华夏、易方达、中欧、景林</p>
                 </div>
                 <div class="date-section">
                     <div class="nav-links">
