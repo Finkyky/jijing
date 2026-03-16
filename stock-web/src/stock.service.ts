@@ -17,6 +17,16 @@ export interface StockSummary {
   合计持仓市值万元: string;
 }
 
+// 轻量级汇总数据（用于列表展示）
+export interface StockSummaryLight {
+  股票代码: string;
+  股票名称: string;
+  总市值亿: number;
+  所属行业: string;
+  持仓基金数量: number;
+  持仓基金公司: string;
+}
+
 export interface StockDetail {
   股票代码: string;
   股票名称: string;
@@ -37,11 +47,22 @@ export interface StockData {
   detail: StockDetail[];
 }
 
+// 缓存策略计算结果
+interface StrategyCache {
+  timestamp: number;
+  data: any;
+}
+
 @Injectable()
 export class StockService {
   private data: StockData | null = null;
   private currentDataPath: string;
   private dataDir: string;
+  private companiesCache: string[] | null = null;
+  private industriesCache: string[] | null = null;
+  private summaryLightCache: StockSummaryLight[] | null = null;
+  private strategiesCache: StrategyCache | null = null;
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
 
   constructor() {
     // 数据目录：检查多个可能的位置
@@ -119,6 +140,8 @@ export class StockService {
       if (fs.existsSync(filePath)) {
         const content = fs.readFileSync(filePath, 'utf-8');
         this.data = JSON.parse(content);
+        // 清除缓存
+        this.clearCache();
         console.log(`Stock data loaded from ${filePath}, updateTime: ${this.data?.updateTime}`);
       } else {
         console.log(`Data file not found at ${filePath}`);
@@ -128,6 +151,13 @@ export class StockService {
       console.error('Failed to load stock data:', error);
       this.data = null;
     }
+  }
+
+  private clearCache(): void {
+    this.companiesCache = null;
+    this.industriesCache = null;
+    this.summaryLightCache = null;
+    this.strategiesCache = null;
   }
 
   // 获取可用日期列表
@@ -358,36 +388,133 @@ export class StockService {
     return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   }
 
-  // 获取基金公司列表（用于筛选）
+  // 获取基金公司列表（用于筛选）- 使用缓存
   getCompanies(): string[] {
     if (!this.data) return [];
 
-    const companies = new Set<string>();
-    this.data.summary.forEach(item => {
-      const comps = item.持仓基金公司.split('、');
-      comps.forEach(comp => companies.add(comp));
-    });
+    if (this.companiesCache) {
+      return this.companiesCache;
+    }
 
-    return Array.from(companies).sort();
+    const companies = new Set<string>();
+    for (const item of this.data.summary) {
+      const comps = item.持仓基金公司.split('、');
+      for (const comp of comps) {
+        companies.add(comp);
+      }
+    }
+
+    this.companiesCache = Array.from(companies).sort();
+    return this.companiesCache;
   }
 
-  // 获取行业列表（用于筛选）
+  // 获取行业列表（用于筛选）- 使用缓存
   getIndustries(): string[] {
     if (!this.data) return [];
 
+    if (this.industriesCache) {
+      return this.industriesCache;
+    }
+
     const industries = new Set<string>();
-    this.data.summary.forEach(item => {
+    for (const item of this.data.summary) {
       if (item.所属行业) {
         industries.add(item.所属行业);
       }
-    });
+    }
 
-    return Array.from(industries).sort();
+    this.industriesCache = Array.from(industries).sort();
+    return this.industriesCache;
   }
 
-  // 获取策略分析数据
-  getStrategiesData(): StockSummary[] {
+  // 获取轻量级汇总数据（用于列表展示）
+  getSummaryLight(options: {
+    companies?: string[];
+    minMarketCap?: number;
+    maxMarketCap?: number;
+    industry?: string;
+    keyword?: string;
+  } = {}): StockSummaryLight[] {
     if (!this.data) return [];
-    return this.data.summary;
+
+    // 无筛选时使用缓存
+    if (!options.companies?.length && !options.minMarketCap && !options.maxMarketCap && !options.industry && !options.keyword) {
+      if (this.summaryLightCache) {
+        return this.summaryLightCache;
+      }
+      const result = this.data.summary.map(item => ({
+        股票代码: item.股票代码,
+        股票名称: item.股票名称,
+        总市值亿: item.总市值亿,
+        所属行业: item.所属行业,
+        持仓基金数量: item.持仓基金数量,
+        持仓基金公司: item.持仓基金公司,
+      }));
+      this.summaryLightCache = result;
+      return result;
+    }
+
+    // 有筛选时进行筛选
+    let result = this.data.summary;
+    if (options.companies && options.companies.length > 0) {
+      result = result.filter(item =>
+        options.companies!.every(company => item.持仓基金公司.includes(company))
+      );
+    }
+    if (options.minMarketCap !== undefined) {
+      result = result.filter(item => item.总市值亿 >= options.minMarketCap!);
+    }
+    if (options.maxMarketCap !== undefined) {
+      result = result.filter(item => item.总市值亿 <= options.maxMarketCap!);
+    }
+    if (options.industry) {
+      result = result.filter(item =>
+        item.所属行业.includes(options.industry!) ||
+        item.证监会行业.includes(options.industry!)
+      );
+    }
+    if (options.keyword) {
+      const keyword = options.keyword.toLowerCase();
+      result = result.filter(item =>
+        item.股票代码.toLowerCase().includes(keyword) ||
+        item.股票名称.toLowerCase().includes(keyword) ||
+        item.持仓基金列表.toLowerCase().includes(keyword)
+      );
+    }
+
+    return result.map(item => ({
+      股票代码: item.股票代码,
+      股票名称: item.股票名称,
+      总市值亿: item.总市值亿,
+      所属行业: item.所属行业,
+      持仓基金数量: item.持仓基金数量,
+      持仓基金公司: item.持仓基金公司,
+    }));
+  }
+
+  // 获取策略分析数据 - 返回轻量级数据
+  getStrategiesData(): any[] {
+    if (!this.data) return [];
+
+    // 检查缓存
+    const now = Date.now();
+    if (this.strategiesCache && (now - this.strategiesCache.timestamp) < this.CACHE_TTL) {
+      return this.strategiesCache.data;
+    }
+
+    // 只返回策略计算需要的字段
+    const result = this.data.summary.map(item => ({
+      股票代码: item.股票代码,
+      股票名称: item.股票名称,
+      总市值亿: item.总市值亿,
+      所属行业: item.所属行业,
+      持仓基金数量: item.持仓基金数量,
+      持仓基金公司: item.持仓基金公司,
+      持仓比例合计: item.持仓比例合计,
+      合计持仓市值万元: item.合计持仓市值万元,
+    }));
+
+    this.strategiesCache = { timestamp: now, data: result };
+    return result;
   }
 }

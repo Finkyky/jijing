@@ -114,6 +114,28 @@ export class StockController {
     });
   }
 
+  // API: 获取轻量级汇总数据（用于列表展示，减少数据传输）
+  @Get('api/summary/light')
+  getSummaryLight(
+    @Query('company') company?: string | string[],
+    @Query('minCap') minCap?: string,
+    @Query('maxCap') maxCap?: string,
+    @Query('industry') industry?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    let companies: string[] | undefined;
+    if (company) {
+      companies = Array.isArray(company) ? company : [company];
+    }
+    return this.stockService.getSummaryLight({
+      companies,
+      minMarketCap: minCap ? parseFloat(minCap) : undefined,
+      maxMarketCap: maxCap ? parseFloat(maxCap) : undefined,
+      industry,
+      keyword,
+    });
+  }
+
   // API: 获取明细数据
   @Get('api/detail')
   getDetail(@Query('code') code?: string) {
@@ -512,13 +534,16 @@ export class StockController {
 
         document.addEventListener('DOMContentLoaded', async () => {
             await loadDates();
-            await Promise.all([
-                loadStatistics(),
-                loadCompanies(),
-                loadIndustries(),
-                loadSummary(),
-                loadCurrentDate()
-            ]);
+            // 先加载最关键的数据
+            await loadSummary();
+            // 然后并行加载次要数据
+            loadStatistics();
+            loadCurrentDate();
+            // 延迟加载公司和行业列表（用户可能不会马上用）
+            setTimeout(() => {
+                loadCompanies();
+                loadIndustries();
+            }, 100);
         });
 
         async function loadDates() {
@@ -708,7 +733,8 @@ export class StockController {
             if (industry) params.append('industry', industry);
             if (keyword) params.append('keyword', keyword);
             try {
-                const res = await fetch('/api/summary?' + params.toString());
+                // 使用轻量级API减少数据传输
+                const res = await fetch('/api/summary/light?' + params.toString());
                 currentData = await res.json();
                 renderTable();
             } catch (e) {
@@ -1583,46 +1609,49 @@ export class StockController {
         }
 
         function calculateMetrics(data) {
-            // 按行业分组用于龙头策略
+            // 预先计算行业分组和排序（只做一次）
             const industryGroups = {};
-            data.forEach(item => {
+            for (const item of data) {
                 const industry = item.所属行业 || '其他';
                 if (!industryGroups[industry]) industryGroups[industry] = [];
                 industryGroups[industry].push(item);
-            });
+            }
 
-            // 计算每只股票的持仓市值
-            data.forEach(item => {
+            // 预先计算每个行业的排序
+            const industrySortedMap = {};
+            for (const [industry, group] of Object.entries(industryGroups)) {
+                industrySortedMap[industry] = [...group].sort((a, b) => {
+                    const aVal = parseFloat(String(a.合计持仓市值万元 || 0).replace(/,/g, '')) || 0;
+                    const bVal = parseFloat(String(b.合计持仓市值万元 || 0).replace(/,/g, '')) || 0;
+                    return bVal - aVal;
+                });
+            }
+
+            // 一次性计算所有指标
+            for (const item of data) {
                 // 共识度得分
                 const companyCount = item.持仓基金公司 ? item.持仓基金公司.split('、').length : 0;
                 item.companyCount = companyCount;
                 item.consensusScore = item.持仓基金数量 * companyCount;
 
                 // 平均持仓比例
-                const holdingRatioSum = item.持仓比例合计 ? parseFloat(item.持仓比例合计.replace('%', '').replace(',', '')) || 0 : 0;
+                const ratioStr = String(item.持仓比例合计 || '');
+                const holdingRatioSum = parseFloat(ratioStr.replace('%', '').replace(/,/g, '')) || 0;
                 item.avgHoldingRatio = item.持仓基金数量 > 0 ? (holdingRatioSum / item.持仓基金数量).toFixed(2) : 0;
 
                 // 市值等级
                 const cap = item.总市值亿;
-                if (cap >= 2000) item.capLevel = '超大盘';
-                else if (cap >= 500) item.capLevel = '大盘';
-                else if (cap >= 100) item.capLevel = '中盘';
-                else item.capLevel = '小盘';
+                item.capLevel = cap >= 2000 ? '超大盘' : cap >= 500 ? '大盘' : cap >= 100 ? '中盘' : '小盘';
 
-                // 行业排名
+                // 行业排名（使用预先计算的排序）
                 const industry = item.所属行业 || '其他';
-                const group = industryGroups[industry] || [];
-                const sortedGroup = [...group].sort((a, b) => {
-                    const aVal = parseFloat(a.合计持仓市值万元?.replace(/,/g, '') || 0);
-                    const bVal = parseFloat(b.合计持仓市值万元?.replace(/,/g, '') || 0);
-                    return bVal - aVal;
-                });
+                const sortedGroup = industrySortedMap[industry] || [];
                 item.industryRank = sortedGroup.findIndex(s => s.股票代码 === item.股票代码) + 1;
-                item.industryTotal = group.length;
+                item.industryTotal = industryGroups[industry]?.length || 0;
 
                 // 持仓市值数值
-                item.holdingMarketValue = parseFloat(item.合计持仓市值万元?.replace(/,/g, '') || 0);
-            });
+                item.holdingMarketValue = parseFloat(String(item.合计持仓市值万元 || 0).replace(/,/g, '')) || 0;
+            }
 
             return data;
         }
