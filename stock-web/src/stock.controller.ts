@@ -848,8 +848,8 @@ export class StockController {
                     const price = parseFloat(parts[3]); // 当前价格
                     const changePercent = parseFloat(parts[32]); // 涨跌幅
                     const marketCap = parseFloat(parts[45]); // 总市值（亿）
-                    const pe = parseFloat(parts[35]); // PE(TTM)
-                    const turnoverRate = parseFloat(parts[34]); // 换手率
+                    const pe = parseFloat(parts[39]); // PE(市盈率)
+                    const turnoverRate = parseFloat(parts[38]); // 换手率
                     const high52w = parseFloat(parts[42]); // 52周最高
                     const low52w = parseFloat(parts[43]); // 52周最低
                     const volume = parseFloat(parts[6]); // 成交量（手）
