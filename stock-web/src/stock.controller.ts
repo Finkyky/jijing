@@ -2838,14 +2838,27 @@ export class StockController {
             padding: 0 8px;
         }
 
-        table { width: 100%; border-collapse: collapse; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 
         th, td {
-            padding: 16px 20px;
+            padding: 12px 10px;
             text-align: left;
             border-bottom: 1px solid var(--border);
             vertical-align: middle;
         }
+
+        th:nth-child(1), td:nth-child(1) { width: 80px; }  /* 股票代码 */
+        th:nth-child(2), td:nth-child(2) { width: 90px; }  /* 股票名称 */
+        th:nth-child(3), td:nth-child(3) { width: 85px; }  /* 总市值 */
+        th:nth-child(4), td:nth-child(4) { width: 65px; }  /* 现价 */
+        th:nth-child(5), td:nth-child(5) { width: 70px; }  /* 涨幅 */
+        th:nth-child(6), td:nth-child(6) { width: 65px; }  /* PE */
+        th:nth-child(7), td:nth-child(7) { width: 65px; }  /* 换手率 */
+        th:nth-child(8), td:nth-child(8) { width: 80px; }  /* 成交额 */
+        th:nth-child(9), td:nth-child(9) { width: 100px; }  /* 所属行业 */
+        th:nth-child(10), td:nth-child(10) { width: 60px; text-align: center; }  /* 基金数 */
+        th:nth-child(11), td:nth-child(11) { width: 320px; }  /* 持仓基金公司 */
+        th:nth-child(12), td:nth-child(12) { width: 150px; }  /* 操作 */
 
         th {
             background: var(--bg-secondary);
@@ -2962,7 +2975,7 @@ export class StockController {
         .company-tag.default { background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
 
         .company-tags-cell {
-            max-width: 350px;
+            width: 320px;
             vertical-align: middle;
         }
         .company-tags-wrapper {
