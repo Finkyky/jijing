@@ -469,8 +469,11 @@ export class StockController {
                             <th class="sortable" onclick="sortTable('股票代码')">股票代码</th>
                             <th class="sortable" onclick="sortTable('股票名称')">股票名称</th>
                             <th class="sortable" onclick="sortTable('总市值亿')">总市值(亿)</th>
-                            <th class="sortable" onclick="sortTable('price')">现价</th>
-                            <th class="sortable" onclick="sortTable('changePercent')">涨幅</th>
+                            <th>现价</th>
+                            <th>涨幅</th>
+                            <th>PE(TTM)</th>
+                            <th>换手率</th>
+                            <th>成交额(万)</th>
                             <th class="sortable" onclick="sortTable('所属行业')">所属行业</th>
                             <th class="sortable" onclick="sortTable('持仓基金数量')">基金数</th>
                             <th>持仓基金公司</th>
@@ -478,11 +481,13 @@ export class StockController {
                         </tr>
                     </thead>
                     <tbody id="stockTable">
-                        <tr><td colspan="9" class="loading">加载中</td></tr>
+                        <tr><td colspan="12" class="loading">加载中</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
+
+        <div class="pagination" id="pagination"></div>
     </div>
 
     <div class="modal" id="detailModal">
@@ -541,6 +546,8 @@ export class StockController {
         let currentDetailName = '';  // 当前查看明细的股票名称
         let stockQuotes = {};  // 股票实时行情数据
         let quoteTimer = null;  // 行情刷新定时器
+        let currentPage = 1;  // 当前页码
+        const pageSize = 100;  // 每页显示条数，减少DOM节点
 
         document.addEventListener('DOMContentLoaded', async () => {
             await loadDates();
@@ -769,96 +776,96 @@ export class StockController {
             return (timeNum >= 900 && timeNum <= 1130) || (timeNum >= 1300 && timeNum <= 1500);
         }
 
-        // 启动实时行情刷新
+        // 启动实时行情刷新（优化：只在交易时间刷新当前页）
         function startQuoteRefresh() {
             // 清除旧的定时器
             if (quoteTimer) {
                 clearInterval(quoteTimer);
             }
-            // 立即刷新一次
-            fetchStockQuotes();
 
             // 判断是否在交易时间
             if (isTradingTime()) {
-                // 盘中：每10秒刷新一次
-                quoteTimer = setInterval(fetchStockQuotes, 10000);
+                // 盘中：每1秒刷新一次当前页行情
+                quoteTimer = setInterval(() => {
+                    if (currentData.length === 0) return;
+                    const startIndex = (currentPage - 1) * pageSize;
+                    const sorted = [...currentData].sort((a, b) => {
+                        let aVal = a[sortField];
+                        let bVal = b[sortField];
+                        if (typeof aVal === 'number') return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+                        return sortOrder === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
+                    });
+                    const pageData = sorted.slice(startIndex, startIndex + pageSize);
+                    fetchPageQuotes(pageData);
+                }, 1000);
             }
-            // 盘后：不再定时刷新，只保留初始加载的那一次
         }
 
-        // 获取股票实时行情（通过前端直接调用腾讯行情接口）
-        let quoteFetchInProgress = false;  // 防止并发请求
-        let lastQuoteFetchTime = 0;  // 上次请求时间
-        const QUOTE_FETCH_INTERVAL = 5000;  // 最小请求间隔5秒
+        // 获取当前页股票实时行情
+        function fetchPageQuotes(pageData) {
+            if (!pageData || pageData.length === 0) return;
 
-        async function fetchStockQuotes() {
-            if (!currentData || currentData.length === 0) return;
-
-            // 防止并发请求
-            if (quoteFetchInProgress) return;
-
-            // 最小间隔限制
-            const now = Date.now();
-            if (now - lastQuoteFetchTime < QUOTE_FETCH_INTERVAL) return;
-
-            quoteFetchInProgress = true;
-            lastQuoteFetchTime = now;
-
-            try {
-                // 获取所有股票代码
-                const codes = currentData.map(s => s.股票代码);
-                // 转换为腾讯行情接口格式
-                const codeList = codes.map(code => {
-                    if (code.startsWith('6')) {
-                        return 'sh' + code;
-                    } else {
-                        return 'sz' + code;
-                    }
-                });
-
-                // 分批请求，每批最多200个，使用Promise.all并发处理
-                const batchSize = 200;
-                const batches = [];
-                for (let i = 0; i < codeList.length; i += batchSize) {
-                    const batch = codeList.slice(i, i + batchSize);
-                    const url = 'https://qt.gtimg.cn/q=' + batch.join(',');
-                    batches.push(
-                        fetch(url)
-                            .then(response => response.text())
-                            .then(text => parseQuoteResponse(text, codes.slice(i, i + batchSize)))
-                            .catch(e => console.error('获取行情失败:', e))
-                    );
+            const codes = pageData.map(s => s.股票代码);
+            const codeList = codes.map(code => {
+                if (code.startsWith('6')) {
+                    return 'sh' + code;
+                } else {
+                    return 'sz' + code;
                 }
+            });
 
-                // 并发执行所有批次请求
-                await Promise.all(batches);
-
-                // 更新表格中的行情数据
-                updateQuoteDisplay();
-            } finally {
-                quoteFetchInProgress = false;
-            }
+            // 单批请求当前页（最多100条）
+            const url = 'https://qt.gtimg.cn/q=' + codeList.join(',');
+            fetch(url)
+                .then(response => response.text())
+                .then(text => parseQuoteResponse(text, codes))
+                .then(() => updateQuoteDisplay())
+                .catch(e => console.error('获取行情失败:', e));
         }
 
         // 解析腾讯行情接口返回
         function parseQuoteResponse(text, originalCodes) {
             const lines = text.trim().split('\\n');
-            for (let i = 0; i < lines.length && i < originalCodes.length; i++) {
+            for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
                 if (!line || line.indexOf('~') < 0) continue;
 
-                const parts = line.split('~');
+                // 解析格式: v_sh600519="1~贵州茅台~600519~价格~..." 或直接 "1~贵州茅台~600519~价格~..."
+                let quoteData = line;
+                if (line.startsWith('v_')) {
+                    // 提取等号后面的内容
+                    const eqIdx = line.indexOf('=');
+                    if (eqIdx > 0) {
+                        quoteData = line.substring(eqIdx + 1).replace(/^"|"$/g, '');
+                    }
+                }
+
+                const parts = quoteData.split('~');
                 if (parts.length >= 46) {
-                    const code = originalCodes[i];
+                    const code = parts[2]; // 股票代码在第三个字段
+                    if (!code) continue;
+
                     const price = parseFloat(parts[3]); // 当前价格
                     const changePercent = parseFloat(parts[32]); // 涨跌幅
                     const marketCap = parseFloat(parts[45]); // 总市值（亿）
+                    const pe = parseFloat(parts[35]); // PE(TTM)
+                    const turnoverRate = parseFloat(parts[34]); // 换手率
+                    const high52w = parseFloat(parts[42]); // 52周最高
+                    const low52w = parseFloat(parts[43]); // 52周最低
+                    const volume = parseFloat(parts[6]); // 成交量（手）
+                    const amount = parseFloat(parts[37]); // 成交额（万）
 
-                    if (!isNaN(price)) {
+                    if (!isNaN(price) && price > 0) {
                         stockQuotes[code] = {
                             price: price,
-                            changePercent: changePercent,
-                            marketCap: isNaN(marketCap) ? null : marketCap
+                            changePercent: isNaN(changePercent) ? 0 : changePercent,
+                            marketCap: isNaN(marketCap) ? null : marketCap,
+                            pe: isNaN(pe) ? null : pe,
+                            turnoverRate: isNaN(turnoverRate) ? null : turnoverRate,
+                            high52w: isNaN(high52w) ? null : high52w,
+                            low52w: isNaN(low52w) ? null : low52w,
+                            volume: isNaN(volume) ? null : volume,
+                            amount: isNaN(amount) ? null : amount
                         };
                     }
                 }
@@ -872,6 +879,9 @@ export class StockController {
                 const priceEl = document.getElementById('price-' + code);
                 const changeEl = document.getElementById('change-' + code);
                 const capEl = document.getElementById('cap-' + code);
+                const peEl = document.getElementById('pe-' + code);
+                const turnoverEl = document.getElementById('turnover-' + code);
+                const amountEl = document.getElementById('amount-' + code);
 
                 if (priceEl) {
                     priceEl.textContent = quote.price.toFixed(2);
@@ -891,6 +901,15 @@ export class StockController {
                 if (capEl && quote.marketCap !== null && quote.marketCap > 0) {
                     capEl.textContent = quote.marketCap.toFixed(0).toLocaleString();
                 }
+                if (peEl) {
+                    peEl.textContent = quote.pe !== null && quote.pe > 0 ? quote.pe.toFixed(2) : '-';
+                }
+                if (turnoverEl) {
+                    turnoverEl.textContent = quote.turnoverRate !== null && quote.turnoverRate > 0 ? quote.turnoverRate.toFixed(2) + '%' : '-';
+                }
+                if (amountEl) {
+                    amountEl.textContent = quote.amount !== null && quote.amount > 0 ? quote.amount.toFixed(0).toLocaleString() : '-';
+                }
             }
         }
 
@@ -898,21 +917,10 @@ export class StockController {
             const sorted = [...currentData].sort((a, b) => {
                 let aVal, bVal;
 
-                // 处理实时行情字段的排序
-                if (sortField === 'price' || sortField === 'changePercent') {
-                    const aQuote = stockQuotes[a.股票代码] || {};
-                    const bQuote = stockQuotes[b.股票代码] || {};
-                    aVal = sortField === 'price' ? (aQuote.price || 0) : (aQuote.changePercent || 0);
-                    bVal = sortField === 'price' ? (bQuote.price || 0) : (bQuote.changePercent || 0);
-                    return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
-                }
-
                 // 处理市值字段（可能被实时更新）
                 if (sortField === '总市值亿') {
-                    const aQuote = stockQuotes[a.股票代码];
-                    const bQuote = stockQuotes[b.股票代码];
-                    aVal = (aQuote && aQuote.marketCap) ? aQuote.marketCap : a.总市值亿;
-                    bVal = (bQuote && bQuote.marketCap) ? bQuote.marketCap : b.总市值亿;
+                    aVal = a.总市值亿;
+                    bVal = b.总市值亿;
                     return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
                 }
 
@@ -921,12 +929,25 @@ export class StockController {
                 if (typeof aVal === 'number') return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
                 return sortOrder === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
             });
+
             document.getElementById('resultCount').textContent = '共 ' + sorted.length + ' 条结果';
+
             if (sorted.length === 0) {
-                document.getElementById('stockTable').innerHTML = '<tr><td colspan="9" class="no-data">没有符合条件的数据</td></tr>';
+                document.getElementById('stockTable').innerHTML = '<tr><td colspan="12" class="no-data">没有符合条件的数据</td></tr>';
+                document.getElementById('pagination').innerHTML = '';
                 return;
             }
-            const html = sorted.map(stock => {
+
+            // 分页渲染
+            const totalPages = Math.ceil(sorted.length / pageSize);
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = Math.min(startIndex + pageSize, sorted.length);
+            const pageData = sorted.slice(startIndex, endIndex);
+
+            const html = pageData.map(stock => {
                 const companies = stock.持仓基金公司.split('、');
                 const companyTags = companies.map((c, idx) => {
                     const colorClass = getCompanyColorClass(c);
@@ -943,9 +964,12 @@ export class StockController {
                     '<td class="market-cap" id="cap-' + stock.股票代码 + '">' + stock.总市值亿.toFixed(0).toLocaleString() + '</td>' +
                     '<td class="stock-price" id="price-' + stock.股票代码 + '">-</td>' +
                     '<td class="stock-change" id="change-' + stock.股票代码 + '">-</td>' +
+                    '<td class="stock-pe" id="pe-' + stock.股票代码 + '">-</td>' +
+                    '<td class="stock-turnover" id="turnover-' + stock.股票代码 + '">-</td>' +
+                    '<td class="stock-amount" id="amount-' + stock.股票代码 + '">-</td>' +
                     '<td>' + (stock.所属行业 || '-') + '</td>' +
                     '<td><span class="fund-count">' + stock.持仓基金数量 + '</span></td>' +
-                    '<td class="company-tags-cell"><div class="company-tags-wrapper">' + companyTags + showMoreBtn + '</div></td>' +
+                    '<td class="company-tags-cell"><div class="company-tags-wrapper">' + companyTags + '</div>' + showMoreBtn + '</td>' +
                     '<td class="action-cell"><div class="action-btns">' +
                         '<button class="detail-btn" onclick="showDetail(\\'' + stock.股票代码 + '\\', \\'' + stock.股票名称 + '\\')">明细</button>' +
                         '<button class="analyze-btn" onclick="startAnalyze(\\'' + stock.股票代码 + '\\', \\'' + stock.股票名称 + '\\')">🤖 AI分析</button>' +
@@ -953,11 +977,51 @@ export class StockController {
                     '</tr>';
             }).join('');
             document.getElementById('stockTable').innerHTML = html;
+
+            // 渲染分页控件
+            renderPagination(sorted.length, totalPages);
+
+            // 只获取当前页的行情数据
+            fetchPageQuotes(pageData);
+        }
+
+        // 渲染分页控件
+        function renderPagination(total, totalPages) {
+            let html = '';
+            html += '<button class="page-btn" onclick="goToPage(1)" ' + (currentPage === 1 ? 'disabled' : '') + '>首页</button>';
+            html += '<button class="page-btn" onclick="goToPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>上一页</button>';
+
+            // 显示页码范围
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, currentPage + 2);
+
+            if (startPage > 1) html += '<span class="page-ellipsis">...</span>';
+
+            for (let i = startPage; i <= endPage; i++) {
+                html += '<button class="page-btn ' + (i === currentPage ? 'active' : '') + '" onclick="goToPage(' + i + ')">' + i + '</button>';
+            }
+
+            if (endPage < totalPages) html += '<span class="page-ellipsis">...</span>';
+
+            html += '<button class="page-btn" onclick="goToPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>下一页</button>';
+            html += '<button class="page-btn" onclick="goToPage(' + totalPages + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>末页</button>';
+            html += '<span class="page-info">第 ' + currentPage + '/' + totalPages + ' 页</span>';
+
+            document.getElementById('pagination').innerHTML = html;
+        }
+
+        // 跳转到指定页
+        function goToPage(page) {
+            currentPage = page;
+            renderTable();
+            // 滚动到表格顶部
+            document.querySelector('.table-container').scrollIntoView({ behavior: 'smooth' });
         }
 
         // 展开/收起基金公司标签
         function toggleCompanyTags(btn) {
-            const wrapper = btn.parentElement;
+            const cell = btn.parentElement;
+            const wrapper = cell.querySelector('.company-tags-wrapper');
             const isExpanded = btn.classList.contains('expanded');
             const hiddenCount = parseInt(btn.getAttribute('data-count')) || 0;
 
@@ -1069,10 +1133,14 @@ export class StockController {
                 sortField = field;
                 sortOrder = 'desc';
             }
+            currentPage = 1;  // 排序后回到第一页
             renderTable();
         }
 
-        function applyFilters() { loadSummary(); }
+        function applyFilters() {
+            currentPage = 1;  // 筛选后回到第一页
+            loadSummary();
+        }
         function resetFilters() {
             // Reset company filter
             const dropdown = document.getElementById('companyFilterDropdown');
@@ -2724,6 +2792,52 @@ export class StockController {
         .scroll-wrapper::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
         .scroll-wrapper::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .page-btn {
+            padding: 8px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .page-btn:hover:not(:disabled) {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .page-btn.active {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .page-info {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-left: 12px;
+        }
+
+        .page-ellipsis {
+            color: var(--text-secondary);
+            padding: 0 8px;
+        }
+
         table { width: 100%; border-collapse: collapse; }
 
         th, td {
@@ -2857,10 +2971,11 @@ export class StockController {
             align-items: center;
             gap: 4px 6px;
             min-height: 24px;
+            line-height: 1.5;
+        }
+        .company-tags-wrapper:not(.expanded) {
             max-height: 52px;
             overflow: hidden;
-            position: relative;
-            line-height: 1.5;
         }
         .company-tags-wrapper:not(.expanded)::after {
             content: '';
@@ -2869,11 +2984,20 @@ export class StockController {
             right: 0;
             width: 60px;
             height: 26px;
-            background: linear-gradient(to right, transparent, var(--card-bg));
+            background: linear-gradient(to right, transparent, var(--bg-card));
             pointer-events: none;
         }
         .company-tags-wrapper.expanded {
             max-height: 500px;
+        }
+        .company-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 500;
+            white-space: nowrap;
         }
         .company-tag.hidden-tag {
             display: none;
@@ -2893,6 +3017,7 @@ export class StockController {
             transition: all 0.25s ease;
             white-space: nowrap;
             font-weight: 500;
+            flex-shrink: 0;
         }
         .show-more-btn:hover {
             background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%);
