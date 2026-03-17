@@ -170,6 +170,12 @@ export class StockController {
     return this.stockService.getIndustries();
   }
 
+  // API: 获取所有股票代码列表（用于前端获取实时行情）
+  @Get('api/stock-codes')
+  getStockCodes() {
+    return this.stockService.getAllStockCodes();
+  }
+
   // API: 导出汇总表Excel
   @Get('api/export')
   exportExcel(
@@ -463,6 +469,8 @@ export class StockController {
                             <th class="sortable" onclick="sortTable('股票代码')">股票代码</th>
                             <th class="sortable" onclick="sortTable('股票名称')">股票名称</th>
                             <th class="sortable" onclick="sortTable('总市值亿')">总市值(亿)</th>
+                            <th>现价</th>
+                            <th>涨幅</th>
                             <th class="sortable" onclick="sortTable('所属行业')">所属行业</th>
                             <th class="sortable" onclick="sortTable('持仓基金数量')">基金数</th>
                             <th>持仓基金公司</th>
@@ -470,7 +478,7 @@ export class StockController {
                         </tr>
                     </thead>
                     <tbody id="stockTable">
-                        <tr><td colspan="7" class="loading">加载中</td></tr>
+                        <tr><td colspan="9" class="loading">加载中</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -531,6 +539,8 @@ export class StockController {
         let currentDate = '';
         let currentDetailCode = '';  // 当前查看明细的股票代码
         let currentDetailName = '';  // 当前查看明细的股票名称
+        let stockQuotes = {};  // 股票实时行情数据
+        let quoteTimer = null;  // 行情刷新定时器
 
         document.addEventListener('DOMContentLoaded', async () => {
             await loadDates();
@@ -737,8 +747,104 @@ export class StockController {
                 const res = await fetch('/api/summary/light?' + params.toString());
                 currentData = await res.json();
                 renderTable();
+                // 启动实时行情刷新
+                startQuoteRefresh();
             } catch (e) {
-                document.getElementById('stockTable').innerHTML = '<tr><td colspan="7" class="no-data">加载数据失败，请刷新重试</td></tr>';
+                document.getElementById('stockTable').innerHTML = '<tr><td colspan="9" class="no-data">加载数据失败，请刷新重试</td></tr>';
+            }
+        }
+
+        // 启动实时行情刷新
+        function startQuoteRefresh() {
+            // 清除旧的定时器
+            if (quoteTimer) {
+                clearInterval(quoteTimer);
+            }
+            // 立即刷新一次
+            fetchStockQuotes();
+            // 每秒刷新
+            quoteTimer = setInterval(fetchStockQuotes, 1000);
+        }
+
+        // 获取股票实时行情（通过前端直接调用腾讯行情接口）
+        async function fetchStockQuotes() {
+            if (!currentData || currentData.length === 0) return;
+
+            // 获取所有股票代码
+            const codes = currentData.map(s => s.股票代码);
+            // 转换为腾讯行情接口格式
+            const codeList = codes.map(code => {
+                if (code.startsWith('6')) {
+                    return 'sh' + code;
+                } else {
+                    return 'sz' + code;
+                }
+            });
+
+            // 分批请求，每批最多200个
+            const batchSize = 200;
+            for (let i = 0; i < codeList.length; i += batchSize) {
+                const batch = codeList.slice(i, i + batchSize);
+                const url = 'https://qt.gtimg.cn/q=' + batch.join(',');
+
+                try {
+                    const response = await fetch(url);
+                    const text = await response.text();
+                    parseQuoteResponse(text, codes.slice(i, i + batchSize));
+                } catch (e) {
+                    console.error('获取行情失败:', e);
+                }
+            }
+
+            // 更新表格中的行情数据
+            updateQuoteDisplay();
+        }
+
+        // 解析腾讯行情接口返回
+        function parseQuoteResponse(text, originalCodes) {
+            const lines = text.trim().split('\\n');
+            for (let i = 0; i < lines.length && i < originalCodes.length; i++) {
+                const line = lines[i];
+                if (!line || line.indexOf('~') < 0) continue;
+
+                const parts = line.split('~');
+                if (parts.length >= 45) {
+                    const code = originalCodes[i];
+                    const price = parseFloat(parts[3]); // 当前价格
+                    const changePercent = parseFloat(parts[32]); // 涨跌幅
+
+                    if (!isNaN(price)) {
+                        stockQuotes[code] = {
+                            price: price,
+                            changePercent: changePercent
+                        };
+                    }
+                }
+            }
+        }
+
+        // 更新表格中的行情显示
+        function updateQuoteDisplay() {
+            for (const code in stockQuotes) {
+                const quote = stockQuotes[code];
+                const priceEl = document.getElementById('price-' + code);
+                const changeEl = document.getElementById('change-' + code);
+
+                if (priceEl) {
+                    priceEl.textContent = quote.price.toFixed(2);
+                }
+                if (changeEl) {
+                    const change = quote.changePercent;
+                    changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                    // 设置颜色
+                    if (change > 0) {
+                        changeEl.className = 'stock-change up';
+                    } else if (change < 0) {
+                        changeEl.className = 'stock-change down';
+                    } else {
+                        changeEl.className = 'stock-change';
+                    }
+                }
             }
         }
 
@@ -751,7 +857,7 @@ export class StockController {
             });
             document.getElementById('resultCount').textContent = '共 ' + sorted.length + ' 条结果';
             if (sorted.length === 0) {
-                document.getElementById('stockTable').innerHTML = '<tr><td colspan="7" class="no-data">没有符合条件的数据</td></tr>';
+                document.getElementById('stockTable').innerHTML = '<tr><td colspan="9" class="no-data">没有符合条件的数据</td></tr>';
                 return;
             }
             const html = sorted.map(stock => {
@@ -769,6 +875,8 @@ export class StockController {
                     '<td class="stock-code">' + stock.股票代码 + '</td>' +
                     '<td class="stock-name">' + stock.股票名称 + '</td>' +
                     '<td class="market-cap">' + stock.总市值亿.toFixed(0).toLocaleString() + '</td>' +
+                    '<td class="stock-price" id="price-' + stock.股票代码 + '">-</td>' +
+                    '<td class="stock-change" id="change-' + stock.股票代码 + '">-</td>' +
                     '<td>' + (stock.所属行业 || '-') + '</td>' +
                     '<td><span class="fund-count">' + stock.持仓基金数量 + '</span></td>' +
                     '<td class="company-tags-cell"><div class="company-tags-wrapper">' + companyTags + showMoreBtn + '</div></td>' +
@@ -2596,6 +2704,31 @@ export class StockController {
             font-weight: 700;
             color: var(--success);
             font-size: 15px;
+        }
+
+        .stock-price {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        }
+
+        .stock-change {
+            font-weight: 600;
+            font-size: 14px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .stock-change.up {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.15);
+        }
+
+        .stock-change.down {
+            color: #22c55e;
+            background: rgba(34, 197, 94, 0.15);
         }
 
         .fund-count {

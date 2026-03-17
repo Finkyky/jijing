@@ -517,4 +517,10 @@ export class StockService {
     this.strategiesCache = { timestamp: now, data: result };
     return result;
   }
+
+  // 获取所有股票代码列表
+  getAllStockCodes(): string[] {
+    if (!this.data) return [];
+    return this.data.summary.map(item => item.股票代码);
+  }
 }
