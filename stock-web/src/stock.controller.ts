@@ -469,8 +469,8 @@ export class StockController {
                             <th class="sortable" onclick="sortTable('股票代码')">股票代码</th>
                             <th class="sortable" onclick="sortTable('股票名称')">股票名称</th>
                             <th class="sortable" onclick="sortTable('总市值亿')">总市值(亿)</th>
-                            <th>现价</th>
-                            <th>涨幅</th>
+                            <th class="sortable" onclick="sortTable('price')">现价</th>
+                            <th class="sortable" onclick="sortTable('changePercent')">涨幅</th>
                             <th class="sortable" onclick="sortTable('所属行业')">所属行业</th>
                             <th class="sortable" onclick="sortTable('持仓基金数量')">基金数</th>
                             <th>持仓基金公司</th>
@@ -808,15 +808,17 @@ export class StockController {
                 if (!line || line.indexOf('~') < 0) continue;
 
                 const parts = line.split('~');
-                if (parts.length >= 45) {
+                if (parts.length >= 46) {
                     const code = originalCodes[i];
                     const price = parseFloat(parts[3]); // 当前价格
                     const changePercent = parseFloat(parts[32]); // 涨跌幅
+                    const marketCap = parseFloat(parts[45]); // 总市值（亿）
 
                     if (!isNaN(price)) {
                         stockQuotes[code] = {
                             price: price,
-                            changePercent: changePercent
+                            changePercent: changePercent,
+                            marketCap: isNaN(marketCap) ? null : marketCap
                         };
                     }
                 }
@@ -829,6 +831,7 @@ export class StockController {
                 const quote = stockQuotes[code];
                 const priceEl = document.getElementById('price-' + code);
                 const changeEl = document.getElementById('change-' + code);
+                const capEl = document.getElementById('cap-' + code);
 
                 if (priceEl) {
                     priceEl.textContent = quote.price.toFixed(2);
@@ -845,13 +848,36 @@ export class StockController {
                         changeEl.className = 'stock-change';
                     }
                 }
+                if (capEl && quote.marketCap !== null && quote.marketCap > 0) {
+                    capEl.textContent = quote.marketCap.toFixed(0).toLocaleString();
+                }
             }
         }
 
         function renderTable() {
             const sorted = [...currentData].sort((a, b) => {
-                const aVal = a[sortField];
-                const bVal = b[sortField];
+                let aVal, bVal;
+
+                // 处理实时行情字段的排序
+                if (sortField === 'price' || sortField === 'changePercent') {
+                    const aQuote = stockQuotes[a.股票代码] || {};
+                    const bQuote = stockQuotes[b.股票代码] || {};
+                    aVal = sortField === 'price' ? (aQuote.price || 0) : (aQuote.changePercent || 0);
+                    bVal = sortField === 'price' ? (bQuote.price || 0) : (bQuote.changePercent || 0);
+                    return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+                }
+
+                // 处理市值字段（可能被实时更新）
+                if (sortField === '总市值亿') {
+                    const aQuote = stockQuotes[a.股票代码];
+                    const bQuote = stockQuotes[b.股票代码];
+                    aVal = (aQuote && aQuote.marketCap) ? aQuote.marketCap : a.总市值亿;
+                    bVal = (bQuote && bQuote.marketCap) ? bQuote.marketCap : b.总市值亿;
+                    return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+                }
+
+                aVal = a[sortField];
+                bVal = b[sortField];
                 if (typeof aVal === 'number') return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
                 return sortOrder === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
             });
@@ -874,7 +900,7 @@ export class StockController {
                 return '<tr>' +
                     '<td class="stock-code">' + stock.股票代码 + '</td>' +
                     '<td class="stock-name">' + stock.股票名称 + '</td>' +
-                    '<td class="market-cap">' + stock.总市值亿.toFixed(0).toLocaleString() + '</td>' +
+                    '<td class="market-cap" id="cap-' + stock.股票代码 + '">' + stock.总市值亿.toFixed(0).toLocaleString() + '</td>' +
                     '<td class="stock-price" id="price-' + stock.股票代码 + '">-</td>' +
                     '<td class="stock-change" id="change-' + stock.股票代码 + '">-</td>' +
                     '<td>' + (stock.所属行业 || '-') + '</td>' +
