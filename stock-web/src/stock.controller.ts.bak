@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Res, NotFoundException, Param } from '@nestjs/common';
+import { Controller, Get, Post, Query, Res, NotFoundException, Param, Body } from '@nestjs/common';
 import { Response } from 'express';
 import { StockService } from './stock.service';
 import { AiAnalysisService } from './ai-analysis.service';
@@ -41,6 +41,117 @@ export class StockController {
       this.stockService.loadDataByDate(date);
     }
     return this.stockService.getStrategiesData();
+  }
+
+  // API: 获取股票基本面数据（PE/PB/ROE/ROA）- 代理东方财富接口
+  @Get('api/fundamental/:code')
+  async getFundamentalData(@Param('code') code: string) {
+    try {
+      const axios = require('axios');
+      // 添加市场前缀
+      const marketCode = code.startsWith('6') ? 'SH' + code : 'SZ' + code;
+
+      // 使用东方财富财务指标接口
+      const url = 'https://emweb.eastmoney.com/PC_HSF10/NewFinanceAnalysis/ZYZBAjaxNew';
+      const response = await axios.get(url, {
+        params: {
+          companyType: 4,
+          reportDateType: 0,
+          code: marketCode,
+          endDate: '',
+          currencyType: ''
+        },
+        timeout: 5000
+      });
+
+      const data = response.data;
+      const result: { PE: number | null; PB: number | null; ROE: number | null; ROA: number | null } = {
+        PE: null,
+        PB: null,
+        ROE: null,
+        ROA: null
+      };
+
+      if (data && data.data) {
+        const d = data.data;
+        // 从不同位置提取数据
+        if (d.dw) {
+          result.PE = d.dw.syl !== undefined ? parseFloat(d.dw.syl) : null;
+          result.PB = d.dw.sjl !== undefined ? parseFloat(d.dw.sjl) : null;
+        }
+        if (d.jing) {
+          result.ROE = d.jing.jzcsyl !== undefined ? parseFloat(d.jing.jzcsyl) : null;
+          result.ROA = d.jing.zzcsyl !== undefined ? parseFloat(d.jing.zzcsyl) : null;
+        }
+      }
+
+      return result;
+    } catch (error) {
+      return { PE: null, PB: null, ROE: null, ROA: null };
+    }
+  }
+
+  // API: 批量获取股票基本面数据
+  @Post('api/fundamental/batch')
+  async getFundamentalDataBatch(@Body() body: { codes: string[] }) {
+    const { codes } = body;
+    if (!codes || !Array.isArray(codes) || codes.length === 0) {
+      return {};
+    }
+
+    const axios = require('axios');
+    const result: Record<string, { PE: number | null; PB: number | null; ROE: number | null; ROA: number | null }> = {};
+
+    // 分批请求，每批最多20个
+    const batchSize = 20;
+    for (let i = 0; i < codes.length; i += batchSize) {
+      const batch = codes.slice(i, i + batchSize);
+
+      const promises = batch.map(async (code: string) => {
+        try {
+          const marketCode = code.startsWith('6') ? 'SH' + code : 'SZ' + code;
+          const url = 'https://emweb.eastmoney.com/PC_HSF10/NewFinanceAnalysis/ZYZBAjaxNew';
+          const response = await axios.get(url, {
+            params: {
+              companyType: 4,
+              reportDateType: 0,
+              code: marketCode,
+              endDate: '',
+              currencyType: ''
+            },
+            timeout: 5000
+          });
+
+          const data = response.data;
+          const fundamental = { PE: null as number | null, PB: null as number | null, ROE: null as number | null, ROA: null as number | null };
+
+          if (data && data.data) {
+            const d = data.data;
+            if (d.dw) {
+              fundamental.PE = d.dw.syl !== undefined ? parseFloat(d.dw.syl) : null;
+              fundamental.PB = d.dw.sjl !== undefined ? parseFloat(d.dw.sjl) : null;
+            }
+            if (d.jing) {
+              fundamental.ROE = d.jing.jzcsyl !== undefined ? parseFloat(d.jing.jzcsyl) : null;
+              fundamental.ROA = d.jing.zzcsyl !== undefined ? parseFloat(d.jing.zzcsyl) : null;
+            }
+          }
+
+          return { code, data: fundamental };
+        } catch (error) {
+          return { code, data: { PE: null, PB: null, ROE: null, ROA: null } };
+        }
+      });
+
+      const results = await Promise.allSettled(promises);
+      results.forEach(r => {
+        if (r.status === 'fulfilled') {
+          result[r.value.code] = r.value.data;
+        }
+      });
+    }
+
+    return result;
   }
 
   // 分析详情页
@@ -542,6 +653,15 @@ export class StockController {
         let stockQuotes = {};  // 股票实时行情数据
         let quoteTimer = null;  // 行情刷新定时器
 
+        // 虚拟滚动相关变量
+        let visibleStart = 0;  // 可视区域起始索引
+        let visibleEnd = 50;   // 可视区域结束索引
+        const ROW_HEIGHT = 48; // 每行高度
+        const BUFFER_SIZE = 10; // 缓冲区大小
+        let scrollTop = 0;     // 当前滚动位置
+        let isScrolling = false; // 是否正在滚动
+        let scrollTimeout = null; // 滚动结束检测定时器
+
         document.addEventListener('DOMContentLoaded', async () => {
             await loadDates();
             // 先加载最关键的数据
@@ -754,90 +874,52 @@ export class StockController {
             }
         }
 
-        // 判断是否在交易时间（A股：9:00-11:30, 13:00-15:00 工作日）
-        function isTradingTime() {
-            const now = new Date();
-            const day = now.getDay();
-            // 周末不交易
-            if (day === 0 || day === 6) return false;
-
-            const hours = now.getHours();
-            const minutes = now.getMinutes();
-            const timeNum = hours * 100 + minutes;
-
-            // 上午 9:00-11:30，下午 13:00-15:00
-            return (timeNum >= 900 && timeNum <= 1130) || (timeNum >= 1300 && timeNum <= 1500);
-        }
-
-        // 启动实时行情刷新
+        // 启动实时行情刷新（只刷新可视区域）
         function startQuoteRefresh() {
             // 清除旧的定时器
             if (quoteTimer) {
                 clearInterval(quoteTimer);
             }
             // 立即刷新一次
-            fetchStockQuotes();
-
-            // 判断是否在交易时间
-            if (isTradingTime()) {
-                // 盘中：每10秒刷新一次
-                quoteTimer = setInterval(fetchStockQuotes, 10000);
-            }
-            // 盘后：不再定时刷新，只保留初始加载的那一次
+            fetchVisibleQuotes();
+            // 每3秒刷新可视区域的行情（降低频率）
+            quoteTimer = setInterval(fetchVisibleQuotes, 3000);
         }
 
-        // 获取股票实时行情（通过前端直接调用腾讯行情接口）
-        let quoteFetchInProgress = false;  // 防止并发请求
-        let lastQuoteFetchTime = 0;  // 上次请求时间
-        const QUOTE_FETCH_INTERVAL = 5000;  // 最小请求间隔5秒
-
-        async function fetchStockQuotes() {
+        // 获取可视区域股票的实时行情
+        async function fetchVisibleQuotes() {
             if (!currentData || currentData.length === 0) return;
 
-            // 防止并发请求
-            if (quoteFetchInProgress) return;
+            // 只获取可视区域内的股票代码（加上缓冲区）
+            const startIdx = Math.max(0, visibleStart - BUFFER_SIZE);
+            const endIdx = Math.min(currentData.length, visibleEnd + BUFFER_SIZE);
+            const visibleStocks = currentData.slice(startIdx, endIdx);
 
-            // 最小间隔限制
-            const now = Date.now();
-            if (now - lastQuoteFetchTime < QUOTE_FETCH_INTERVAL) return;
+            if (visibleStocks.length === 0) return;
 
-            quoteFetchInProgress = true;
-            lastQuoteFetchTime = now;
+            const codes = visibleStocks.map(s => s.股票代码);
+            // 转换为腾讯行情接口格式
+            const codeList = codes.map(code => {
+                if (code.startsWith('6')) {
+                    return 'sh' + code;
+                } else {
+                    return 'sz' + code;
+                }
+            });
+
+            // 单次请求（可视区域通常不超过100个）
+            const url = 'https://qt.gtimg.cn/q=' + codeList.join(',');
 
             try {
-                // 获取所有股票代码
-                const codes = currentData.map(s => s.股票代码);
-                // 转换为腾讯行情接口格式
-                const codeList = codes.map(code => {
-                    if (code.startsWith('6')) {
-                        return 'sh' + code;
-                    } else {
-                        return 'sz' + code;
-                    }
-                });
-
-                // 分批请求，每批最多200个，使用Promise.all并发处理
-                const batchSize = 200;
-                const batches = [];
-                for (let i = 0; i < codeList.length; i += batchSize) {
-                    const batch = codeList.slice(i, i + batchSize);
-                    const url = 'https://qt.gtimg.cn/q=' + batch.join(',');
-                    batches.push(
-                        fetch(url)
-                            .then(response => response.text())
-                            .then(text => parseQuoteResponse(text, codes.slice(i, i + batchSize)))
-                            .catch(e => console.error('获取行情失败:', e))
-                    );
-                }
-
-                // 并发执行所有批次请求
-                await Promise.all(batches);
-
-                // 更新表格中的行情数据
-                updateQuoteDisplay();
-            } finally {
-                quoteFetchInProgress = false;
+                const response = await fetch(url);
+                const text = await response.text();
+                parseQuoteResponse(text, codes);
+            } catch (e) {
+                console.error('获取行情失败:', e);
             }
+
+            // 更新表格中的行情数据
+            updateVisibleQuoteDisplay();
         }
 
         // 解析腾讯行情接口返回
@@ -1590,6 +1672,15 @@ export class StockController {
         .cap-large { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
         .cap-medium { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
         .cap-small { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .tag-quality { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .tag-good { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
+        .tag-normal { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .tag-poor { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .tag-nodata { background: rgba(100, 116, 139, 0.15); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3); }
+        .value-good { color: #34d399; font-weight: 600; }
+        .value-normal { color: #fbbf24; }
+        .value-high { color: #f87171; }
+        .value-low { color: #f87171; }
         .loading-state {
             text-align: center;
             padding: 60px;
@@ -1642,6 +1733,9 @@ export class StockController {
             <button class="strategy-tab" data-strategy="marketcap" onclick="switchStrategy('marketcap')">
                 💰 市值因子
             </button>
+            <button class="strategy-tab" data-strategy="fundamental" onclick="switchStrategy('fundamental')">
+                📈 基本面分析
+            </button>
             <div class="date-selector" style="margin-left: auto;">
                 <label for="dateSelect">📅</label>
                 <select id="dateSelect" onchange="loadData()">
@@ -1669,6 +1763,8 @@ export class StockController {
     <script>
         let currentData = [];
         let currentStrategy = 'consensus';
+        let fundamentalData = {}; // 缓存基本面数据
+        let loadingFundamentals = false;
 
         const strategyConfigs = {
             consensus: {
@@ -1705,6 +1801,13 @@ export class StockController {
                 columns: ['排名', '股票代码', '股票名称', '市值(亿)', '市值等级', '基金数', '公司数', '共识度得分', '标签'],
                 sortField: 'marketCap',
                 sortOrder: 'desc'
+            },
+            fundamental: {
+                title: '📈 基本面分析',
+                desc: '基于PE、PB、ROE、ROA等财务指标进行股票筛选和排序。PE/PB越低估值越便宜，ROE/ROA越高盈利能力越强。数据来源于东方财富，点击表头可切换排序指标。',
+                columns: ['排名', '股票代码', '股票名称', '市值(亿)', '行业', 'PE', 'PB', 'ROE(%)', 'ROA(%)', '评级'],
+                sortField: 'ROE',
+                sortOrder: 'desc'
             }
         };
 
@@ -1738,6 +1841,12 @@ export class StockController {
             try {
                 const res = await fetch(url);
                 currentData = await res.json();
+
+                // 如果是基本面分析策略，先获取基本面数据
+                if (currentStrategy === 'fundamental') {
+                    await loadFundamentalData();
+                }
+
                 renderTable();
             } catch (e) {
                 console.error('加载数据失败', e);
@@ -1745,13 +1854,73 @@ export class StockController {
             }
         }
 
-        function switchStrategy(strategy) {
+        // 加载基本面数据（PE/PB/ROE/ROA）- 通过后端代理获取
+        async function loadFundamentalData() {
+            if (loadingFundamentals) return;
+            loadingFundamentals = true;
+
+            // 显示加载提示
+            document.getElementById('tableBody').innerHTML = '<tr><td colspan="10" class="loading-state">正在加载基本面数据，请稍候...</td></tr>';
+
+            const codes = currentData.map(item => item.股票代码);
+            const batchSize = 50;
+            let loadedCount = 0;
+
+            for (let i = 0; i < codes.length; i += batchSize) {
+                const batch = codes.slice(i, i + batchSize);
+
+                try {
+                    // 通过后端API批量获取基本面数据
+                    const response = await fetch('/api/fundamental/batch', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ codes: batch })
+                    });
+                    const results = await response.json();
+
+                    // 合并到缓存
+                    for (const code in results) {
+                        fundamentalData[code] = results[code];
+                    }
+                    loadedCount += batch.length;
+
+                    // 更新加载进度
+                    document.getElementById('tableBody').innerHTML =
+                        '<tr><td colspan="10" class="loading-state">正在加载基本面数据... (' + loadedCount + '/' + codes.length + ')</td></tr>';
+                } catch (e) {
+                    console.error('加载基本面数据批次失败', e);
+                    loadedCount += batch.length;
+                }
+            }
+
+            loadingFundamentals = false;
+        }
+
+        // 获取单只股票的基本面数据（通过后端代理）
+        async function fetchFundamentalData(code) {
+            try {
+                const response = await fetch('/api/fundamental/' + code);
+                return await response.json();
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function switchStrategy(strategy) {
             currentStrategy = strategy;
             document.querySelectorAll('.strategy-tab').forEach(tab => {
                 tab.classList.toggle('active', tab.dataset.strategy === strategy);
             });
             const config = strategyConfigs[strategy];
             document.getElementById('strategyDesc').innerHTML = '<h3>' + config.title + '</h3><p>' + config.desc + '</p>';
+
+            // 如果切换到基本面分析，需要先加载数据
+            if (strategy === 'fundamental' && Object.keys(fundamentalData).length === 0) {
+                await loadFundamentalData();
+            }
+
             renderTable();
         }
 
@@ -1816,6 +1985,15 @@ export class StockController {
                 // 市值等级
                 const cap = item.总市值亿;
                 item.capLevel = cap >= 2000 ? '超大盘' : cap >= 500 ? '大盘' : cap >= 100 ? '中盘' : '小盘';
+
+                // 合并基本面数据（PE/PB/ROE/ROA）
+                const fundamental = fundamentalData[item.股票代码];
+                if (fundamental) {
+                    item.PE = fundamental.PE;
+                    item.PB = fundamental.PB;
+                    item.ROE = fundamental.ROE;
+                    item.ROA = fundamental.ROA;
+                }
 
                 // 行业排名（使用预先计算的排序）
                 const industry = item.所属行业 || '其他';
@@ -1908,6 +2086,59 @@ export class StockController {
                     '<td>' + item.companyCount + '</td>' +
                     '<td><div class="score-bar"><div class="score-bar-fill ' + scoreClass + '" style="width: ' + scorePercent + '%"></div></div><span style="margin-left: 8px; font-size: 12px;">' + item.consensusScore + '</span></td>' +
                     '<td>' + tags + '</td>' +
+                    '</tr>';
+            } else if (strategy === 'fundamental') {
+                // 基本面分析 - 使用前端获取的数据
+                const pe = item.PE !== undefined ? item.PE : '-';
+                const pb = item.PB !== undefined ? item.PB : '-';
+                const roe = item.ROE !== undefined ? item.ROE : '-';
+                const roa = item.ROA !== undefined ? item.ROA : '-';
+
+                // 格式化显示
+                const peDisplay = typeof pe === 'number' ? pe.toFixed(2) : pe;
+                const pbDisplay = typeof pb === 'number' ? pb.toFixed(2) : pb;
+                const roeDisplay = typeof roe === 'number' ? roe.toFixed(2) : roe;
+                const roaDisplay = typeof roa === 'number' ? roa.toFixed(2) : roa;
+
+                // 评级逻辑：高ROE+低PE为优质
+                let rating = '';
+                let ratingClass = '';
+                if (typeof roe === 'number' && typeof pe === 'number') {
+                    if (roe >= 15 && pe <= 20) {
+                        rating = '优质';
+                        ratingClass = 'tag-quality';
+                    } else if (roe >= 10 && pe <= 30) {
+                        rating = '良好';
+                        ratingClass = 'tag-good';
+                    } else if (roe < 5 || pe > 50) {
+                        rating = '较差';
+                        ratingClass = 'tag-poor';
+                    } else {
+                        rating = '一般';
+                        ratingClass = 'tag-normal';
+                    }
+                } else {
+                    rating = '数据缺失';
+                    ratingClass = 'tag-nodata';
+                }
+
+                // 数值颜色样式
+                const peClass = typeof pe === 'number' ? (pe <= 20 ? 'value-good' : pe <= 30 ? 'value-normal' : 'value-high') : '';
+                const pbClass = typeof pb === 'number' ? (pb <= 2 ? 'value-good' : pb <= 3 ? 'value-normal' : 'value-high') : '';
+                const roeClass = typeof roe === 'number' ? (roe >= 15 ? 'value-good' : roe >= 10 ? 'value-normal' : 'value-low') : '';
+                const roaClass = typeof roa === 'number' ? (roa >= 8 ? 'value-good' : roa >= 5 ? 'value-normal' : 'value-low') : '';
+
+                return '<tr>' +
+                    '<td><span class="rank-badge ' + rankClass + '">' + rank + '</span></td>' +
+                    '<td class="stock-code">' + item.股票代码 + '</td>' +
+                    '<td class="stock-name">' + item.股票名称 + '</td>' +
+                    '<td>' + item.总市值亿.toFixed(0) + '</td>' +
+                    '<td>' + (item.所属行业 || '-') + '</td>' +
+                    '<td class="' + peClass + '">' + peDisplay + '</td>' +
+                    '<td class="' + pbClass + '">' + pbDisplay + '</td>' +
+                    '<td class="' + roeClass + '">' + roeDisplay + '</td>' +
+                    '<td class="' + roaClass + '">' + roaDisplay + '</td>' +
+                    '<td><span class="tag ' + ratingClass + '">' + rating + '</span></td>' +
                     '</tr>';
             }
             return '';
