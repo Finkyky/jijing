@@ -2924,6 +2924,13 @@ export class StockController {
             background: rgba(34, 197, 94, 0.15);
         }
 
+        .stock-amount {
+            font-weight: 600;
+            color: #f59e0b;
+            font-size: 13px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        }
+
         .fund-count {
             display: inline-flex;
             align-items: center;
