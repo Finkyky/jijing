@@ -1,0 +1,4 @@
+interface:
+  display_name: "A-Share Stock Picker"
+  short_description: "Pick A-shares across short, mid, and long horizons."
+  default_prompt: "Use $a-share-stock-picker to recommend 3 short-term, 3 medium-term, and 3 long-term A-share stocks based on the latest close, Tonghuashun data, policy news, and market context."
