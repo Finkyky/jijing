@@ -363,6 +363,7 @@ export class StockController {
                     <h1>📈 股票筛选数据平台</h1>
                     <div class="nav-links">
                         <a href="/" class="nav-link active">📊 数据列表</a>
+                        <a href="/predictions" class="nav-link">📈 股票预测</a>
                         <a href="/strategies" class="nav-link">💡 投资策略</a>
                         <a href="/analyses" class="nav-link">🤖 AI分析</a>
                     </div>
@@ -1433,6 +1434,7 @@ export class StockController {
                     <h1>🤖 AI分析报告</h1>
                     <div class="nav-links">
                         <a href="/" class="nav-link">📊 数据列表</a>
+                        <a href="/predictions" class="nav-link">📈 股票预测</a>
                         <a href="/strategies" class="nav-link">💡 投资策略</a>
                         <a href="/analyses" class="nav-link active">🤖 AI分析</a>
                     </div>
@@ -1687,6 +1689,7 @@ export class StockController {
                 <h1 class="logo">📈 股票筛选平台</h1>
                 <nav class="nav">
                     <a href="/" class="nav-link">📊 数据列表</a>
+                    <a href="/predictions" class="nav-link">📈 股票预测</a>
                     <a href="/strategies" class="nav-link active">💡 投资策略</a>
                     <a href="/analyses" class="nav-link">🤖 AI分析</a>
                 </nav>
@@ -2150,6 +2153,7 @@ export class StockController {
                     <h1>🤖 AI分析报告</h1>
                     <div class="nav-links">
                         <a href="/" class="nav-link">📊 数据列表</a>
+                        <a href="/predictions" class="nav-link">📈 股票预测</a>
                         <a href="/strategies" class="nav-link">💡 投资策略</a>
                         <a href="/analyses" class="nav-link active">🤖 AI分析</a>
                     </div>

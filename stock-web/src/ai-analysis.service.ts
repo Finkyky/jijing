@@ -45,7 +45,9 @@ export class AiAnalysisService {
   constructor() {
     // 初始化OpenAI客户端（从环境变量读取配置）
     const apiKey = process.env.BUILTIN_MODEL_API_KEY;
-    const baseURL = process.env.BUILTIN_MODEL_BASE_URL || 'https://api.longcat.chat/openai/v1';
+    const baseURL = this.normalizeModelBaseURL(
+      process.env.BUILTIN_MODEL_BASE_URL || 'https://api.longcat.chat/openai/v1',
+    );
     const modelId = process.env.BUILTIN_MODEL_ID || 'LongCat-Flash-Chat';
 
     if (apiKey) {
@@ -65,6 +67,15 @@ export class AiAnalysisService {
 
     // 加载已有的分析结果
     this.loadExistingAnalyses();
+  }
+
+  private normalizeModelBaseURL(raw: string): string {
+    const trimmed = raw.trim().replace(/\/+$/, '');
+    const suffix = '/chat/completions';
+    if (trimmed.endsWith(suffix)) {
+      return trimmed.slice(0, -suffix.length);
+    }
+    return trimmed;
   }
 
   private ensureDirExists(dir: string) {
